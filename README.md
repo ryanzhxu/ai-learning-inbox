@@ -87,9 +87,9 @@ Cloudflare runtime:
 
 ## CI
 
-- Pull requests run `npm run check` in GitHub Actions.
 - Pushes to `main` run `npm run check` and then `npx wrangler deploy`.
-- To require tests before merging a feature branch, set branch protection on `main` to require the `verify` workflow check.
+- `main` is branch-protected with the `CI / verify` required status check.
+- No review approval is required before `main` updates.
 
 ## Sample webhook payload
 
