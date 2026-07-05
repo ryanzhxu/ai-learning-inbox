@@ -16,6 +16,7 @@ describe('github actions workflow', () => {
   it('deploys only from main pushes after verify passes', () => {
     expect(workflow).toContain("if: github.event_name == 'push' && github.ref == 'refs/heads/main'");
     expect(workflow).toContain('needs: verify');
+    expect(workflow).toContain('node-version: 22');
     expect(workflow).toContain('name: Deploy Worker');
     expect(workflow).toContain('run: npx wrangler deploy');
   });
