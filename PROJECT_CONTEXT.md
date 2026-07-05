@@ -26,7 +26,7 @@ Then show the results in a small private dashboard and nightly digest.
 - iPhone Share Sheet posts a Threads URL and optional text/note to `POST /ingest/share`.
 - Backend stores the raw submission in D1.
 - Threads URLs are normalized and the backend tries to extract public post text first.
-- If the shared URL points at an Instagram post, the backend also tries to pull the public image URL and include it in vision analysis.
+- If the shared URL points at an Instagram post, the backend also tries to pull the public image URL, inline the bytes when possible, and include it in vision analysis.
 - If extraction fails, the app falls back gracefully and keeps enough context for analysis.
 
 ## Decisions Made
@@ -35,7 +35,7 @@ Then show the results in a small private dashboard and nightly digest.
 - Keep the stored AI output minimal.
 - Keep D1 as the primary datastore for now.
 - Leave Notion as a future async sync target, not the main database.
-- Focus on Threads first, but keep Instagram image support lightweight and fallback-safe.
+- Focus on Threads first, but keep Instagram image support lightweight, inline when possible, and fallback-safe.
 
 ## How To Verify
 

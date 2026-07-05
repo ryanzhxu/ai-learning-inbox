@@ -68,7 +68,7 @@ export function buildAnalysisInputContent(input: {
   imageUrl?: string | null;
 }): Array<{ type: 'input_text'; text: string } | { type: 'input_image'; image_url: string; detail: 'low' | 'high' | 'auto' }> {
   const imageInstruction = input.imageUrl?.trim()
-    ? '\n\nIf an image is attached, inspect it and combine any visible text or context with the saved text.'
+    ? '\n\nIf an image is attached, read it closely, transcribe any visible text you can see, and combine it with the saved text.'
     : '';
   const content: Array<{ type: 'input_text'; text: string } | { type: 'input_image'; image_url: string; detail: 'low' | 'high' | 'auto' }> = [
     {

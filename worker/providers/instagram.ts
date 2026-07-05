@@ -5,6 +5,8 @@ const INSTAGRAM_DESCRIPTION_FALLBACKS = [
 ];
 
 const INSTAGRAM_TEXT_KEYS = ['articleBody', 'caption', 'description', 'headline', 'text', 'name'] as const;
+const INSTAGRAM_IMAGE_KEYS = ['image', 'thumbnailUrl', 'contentUrl'] as const;
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 function decodeHtmlEntities(value: string): string {
   return value.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (entity, token: string) => {
@@ -135,6 +137,57 @@ function extractStructuredInstagramText(html: string): string | null {
   return null;
 }
 
+function looksLikeHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+function extractImageUrlFromStructuredValue(value: unknown, seen = new Set<object>()): string | null {
+  if (typeof value === 'string') {
+    return looksLikeHttpUrl(value) ? value : null;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const extracted = extractImageUrlFromStructuredValue(item, seen);
+      if (extracted) return extracted;
+    }
+    return null;
+  }
+
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  if (seen.has(candidate)) {
+    return null;
+  }
+  seen.add(candidate);
+
+  for (const key of INSTAGRAM_IMAGE_KEYS) {
+    const extracted = extractImageUrlFromStructuredValue(candidate[key], seen);
+    if (extracted) return extracted;
+  }
+
+  for (const nested of Object.values(candidate)) {
+    const extracted = extractImageUrlFromStructuredValue(nested, seen);
+    if (extracted) return extracted;
+  }
+
+  return null;
+}
+
+function extractStructuredInstagramImageUrl(html: string): string | null {
+  for (const block of extractJsonLdBlocks(html)) {
+    const extracted = extractImageUrlFromStructuredValue(block);
+    if (extracted) {
+      return extracted;
+    }
+  }
+
+  return null;
+}
+
 export function extractInstagramMetadata(html: string): { title: string | null; text: string | null; imageUrl: string | null } {
   const title = cleanInstagramTitle(
     extractMetaContent(html, 'og:title')
@@ -150,13 +203,39 @@ export function extractInstagramMetadata(html: string): { title: string | null; 
   const imageUrl = extractMetaContent(html, 'og:image:secure_url')
     ?? extractMetaContent(html, 'og:image')
     ?? extractMetaContent(html, 'twitter:image:src')
-    ?? extractMetaContent(html, 'twitter:image');
+    ?? extractMetaContent(html, 'twitter:image')
+    ?? extractStructuredInstagramImageUrl(html);
 
   return {
     title,
     text: description && isUsefulDescription(description) ? description : structuredText,
     imageUrl,
   };
+}
+
+export async function fetchInstagramImageAsDataUrl(imageUrl: string): Promise<string> {
+  const response = await fetch(imageUrl, {
+    headers: {
+      'user-agent': 'Mozilla/5.0 (compatible; AI-Learning-Inbox/1.0; +https://ai-learning-inbox.rxlab.workers.dev)',
+    },
+    redirect: 'follow',
+  });
+
+  if (!response.ok) {
+    return imageUrl;
+  }
+
+  const contentType = response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
+  if (!contentType?.startsWith('image/')) {
+    return imageUrl;
+  }
+
+  const bytes = await response.arrayBuffer();
+  if (bytes.byteLength === 0 || bytes.byteLength > MAX_IMAGE_BYTES) {
+    return imageUrl;
+  }
+
+  return `data:${contentType};base64,${Buffer.from(bytes).toString('base64')}`;
 }
 
 export async function fetchInstagramMetadata(url: string): Promise<{ title: string | null; text: string | null; imageUrl: string | null }> {

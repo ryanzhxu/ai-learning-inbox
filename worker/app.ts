@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 
 import { ingestPayloadSchema } from './domain/schemas';
 import { buildDigest as buildDigestWithOpenAI, analyzePost } from './providers/openai';
-import { fetchInstagramMetadata } from './providers/instagram';
+import { fetchInstagramImageAsDataUrl, fetchInstagramMetadata } from './providers/instagram';
 import { fetchThreadsMetadata, isUsefulThreadsText } from './providers/threads';
 import { D1Repository } from './repositories/d1';
 import type { Env } from './types';
@@ -145,7 +145,7 @@ export async function processSubmissionJob(
     } else if (isInstagramCandidate(candidate)) {
       try {
         const fetched = await fetchInstagramMetadata(candidate.canonical_url);
-        imageUrl = fetched.imageUrl;
+        imageUrl = fetched.imageUrl ? await fetchInstagramImageAsDataUrl(fetched.imageUrl) : null;
         normalizedText = buildInstagramNormalizedText(candidate, fetched.text, imageUrl);
         await repo.updatePostContent(candidate.post_id, {
           title: fetched.title ?? candidate.title,

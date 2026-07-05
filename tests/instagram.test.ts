@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { extractInstagramMetadata } from '../worker/providers/instagram';
+import { extractInstagramMetadata, fetchInstagramImageAsDataUrl } from '../worker/providers/instagram';
 import { buildAnalysisInputContent } from '../worker/providers/openai';
 
 describe('instagram metadata extraction', () => {
@@ -42,6 +42,27 @@ describe('instagram metadata extraction', () => {
     expect(parsed.text).toContain('Claude Code');
     expect(parsed.imageUrl).toBe('https://cdn.example.com/instagram-post-2.jpg');
   });
+
+  it('falls back to structured image urls when meta tags do not expose one', () => {
+    const parsed = extractInstagramMetadata(`
+      <html>
+        <head>
+          <meta property="og:title" content="Mini Little Changes on Instagram" />
+          <script type="application/ld+json">
+            {
+              "@context": "https://schema.org",
+              "@type": "SocialMediaPosting",
+              "caption": "作者分享自己用 Claude Code 運作約半年。",
+              "image": "https://cdn.example.com/instagram-jsonld.jpg"
+            }
+          </script>
+        </head>
+      </html>
+    `);
+
+    expect(parsed.text).toContain('Claude Code');
+    expect(parsed.imageUrl).toBe('https://cdn.example.com/instagram-jsonld.jpg');
+  });
 });
 
 describe('analysis input content', () => {
@@ -59,5 +80,36 @@ describe('analysis input content', () => {
       image_url: 'https://cdn.example.com/post.jpg',
       detail: 'high',
     });
+  });
+});
+
+describe('instagram image fetching', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('inlines image bytes as a data url when the fetch succeeds', async () => {
+    const fetchMock = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), {
+      headers: { 'content-type': 'image/png' },
+      status: 200,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchInstagramImageAsDataUrl('https://cdn.example.com/post.png');
+
+    expect(fetchMock).toHaveBeenCalledWith('https://cdn.example.com/post.png', expect.any(Object));
+    expect(result.startsWith('data:image/png;base64,')).toBe(true);
+  });
+
+  it('keeps the original url when the fetch is not an image', async () => {
+    const fetchMock = vi.fn(async () => new Response('<html></html>', {
+      headers: { 'content-type': 'text/html' },
+      status: 200,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await fetchInstagramImageAsDataUrl('https://cdn.example.com/post.png');
+
+    expect(result).toBe('https://cdn.example.com/post.png');
   });
 });
