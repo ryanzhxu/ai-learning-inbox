@@ -15,6 +15,12 @@ describe('normalize helpers', () => {
     );
   });
 
+  it('removes X share tracking params', () => {
+    expect(canonicalizeUrl('https://x.com/laoyingkhq/status/2073358018750935254?s=12')).toBe(
+      'https://x.com/laoyingkhq/status/2073358018750935254',
+    );
+  });
+
   it('builds a normalized post shape from partial share payload', () => {
     const normalized = normalizeForInsert({
       source_platform: 'threads',

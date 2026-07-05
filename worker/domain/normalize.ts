@@ -4,6 +4,7 @@ export function canonicalizeUrl(rawUrl: string): string {
   const url = new URL(rawUrl);
   url.hash = '';
   const isThreads = url.hostname.toLowerCase().includes('threads');
+  const isX = url.hostname.toLowerCase().includes('x.com') || url.hostname.toLowerCase().includes('twitter.com');
 
   const cleanParams = new URLSearchParams();
   for (const [key, value] of url.searchParams.entries()) {
@@ -12,6 +13,7 @@ export function canonicalizeUrl(rawUrl: string): string {
       || key === 'igshid'
       || key === 'fbclid'
       || (isThreads && (key === 'xmt' || key === 'slof'))
+      || (isX && key === 's')
     ) {
       continue;
     }

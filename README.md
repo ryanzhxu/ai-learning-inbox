@@ -91,8 +91,8 @@ Send JSON to `POST /ingest/share` with header `x-aili-secret`:
 
 ```json
 {
-  "source_platform": "threads",
-  "source_url": "https://www.threads.net/@user/post/abc123",
+  "source_platform": "x",
+  "source_url": "https://x.com/user/status/1234567890",
   "shared_text": "A concise note about multi-step agents and evals.",
   "user_note": "Worth testing in a toy workflow.",
   "capture_method": "shortcut"

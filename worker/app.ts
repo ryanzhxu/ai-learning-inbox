@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { ingestPayloadSchema } from './domain/schemas';
 import { buildDigest as buildDigestWithOpenAI, analyzePost } from './providers/openai';
 import { fetchInstagramImageAsDataUrl, fetchInstagramMetadata } from './providers/instagram';
+import { fetchXMetadata } from './providers/x';
 import { fetchThreadsMetadata, isUsefulThreadsText } from './providers/threads';
 import { D1Repository } from './repositories/d1';
 import type { Env } from './types';
@@ -48,6 +49,18 @@ function isInstagramCandidate(candidate: {
   const isInstagramPlatform = candidate.source_platform.trim().toLowerCase() === 'instagram';
 
   return isInstagramUrl || isInstagramPlatform;
+}
+
+function isXCandidate(candidate: {
+  source_platform: string;
+  source_url: string;
+  canonical_url?: string;
+}): boolean {
+  const host = getSourceHost(candidate);
+  const isXUrl = host.includes('x.com') || host.includes('twitter.com');
+  const isXPlatform = ['x', 'twitter'].includes(candidate.source_platform.trim().toLowerCase());
+
+  return isXUrl || isXPlatform;
 }
 
 function buildFetchedNormalizedText(candidate: {
@@ -111,6 +124,18 @@ function buildInstagramNormalizedText(candidate: {
       ]);
 }
 
+function buildXNormalizedText(candidate: {
+  normalized_text: string;
+  shared_text: string | null;
+  user_note: string | null;
+  source_url?: string;
+}, extractedText: string | null): string {
+  return buildFetchedNormalizedText(candidate, extractedText, [
+    'X content note: no public post text could be extracted from the shared URL.',
+    'Ask the user to paste the post text or share a screenshot if the post is image-heavy.',
+  ]);
+}
+
 export async function processSubmissionJob(
   env: Env,
   submissionId: number,
@@ -153,6 +178,21 @@ export async function processSubmissionJob(
         });
       } catch {
         normalizedText = buildInstagramNormalizedText(candidate, null, null);
+        await repo.updatePostContent(candidate.post_id, {
+          title: candidate.title,
+          normalizedText,
+        });
+      }
+    } else if (isXCandidate(candidate)) {
+      try {
+        const fetched = await fetchXMetadata(candidate.canonical_url);
+        normalizedText = buildXNormalizedText(candidate, fetched.text);
+        await repo.updatePostContent(candidate.post_id, {
+          title: fetched.title ?? candidate.title,
+          normalizedText,
+        });
+      } catch {
+        normalizedText = buildXNormalizedText(candidate, null);
         await repo.updatePostContent(candidate.post_id, {
           title: candidate.title,
           normalizedText,

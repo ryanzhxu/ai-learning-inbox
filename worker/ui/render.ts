@@ -551,7 +551,7 @@ export function renderDigest(digest: DigestView | null): string {
 export function renderShortcutSetup(workerUrl: string): string {
   const webhookUrl = `${workerUrl.replace(/\/$/, '')}/ingest/share`;
   const samplePayload = `{
-  "source_platform": "instagram",
+  "source_platform": "x",
   "source_url": "Shortcut Input URL",
   "shared_text": "Shortcut Input Text",
   "user_note": "Optional note from Ask for Input",
@@ -566,7 +566,7 @@ export function renderShortcutSetup(workerUrl: string): string {
       <div class="headline">
         <div>
           <h1>Wrap your webhook in a share sheet.</h1>
-          <p class="lede">Your backend is already ready. The shortcut can forward the shared Threads URL, any visible text, and an optional note to your Worker; the backend will try to extract public post text first and fall back gracefully if it cannot.</p>
+          <p class="lede">Your backend is already ready. The shortcut can forward the shared Threads, X, or Instagram URL, any visible text, and an optional note to your Worker; the backend will try to extract public post text first and fall back gracefully if it cannot.</p>
         </div>
         ${renderNav()}
       </div>
