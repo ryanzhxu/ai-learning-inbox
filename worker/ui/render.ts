@@ -67,10 +67,14 @@ export function layout(title: string, body: string): string {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f5efe4" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <title>${escapeHtml(title)}</title>
     <style>
       :root {
         color-scheme: light;
+        --ui-font: "Noto Sans HK", "Noto Sans CJK HK", "PingFang HK", "PingFang TC", "Hiragino Sans GB", "Microsoft JhengHei", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
         --bg: #f5efe4;
         --bg-deep: #e7d8c2;
         --paper: rgba(255, 251, 245, 0.9);
@@ -92,7 +96,7 @@ export function layout(title: string, body: string): string {
         background:
           radial-gradient(circle at top left, rgba(255, 255, 255, 0.55), transparent 32%),
           linear-gradient(180deg, #fbf6ee 0%, var(--bg) 54%, var(--bg-deep) 100%);
-        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
+        font-family: var(--ui-font);
         -webkit-font-smoothing: antialiased;
         text-rendering: optimizeLegibility;
       }

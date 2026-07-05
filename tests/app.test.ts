@@ -16,9 +16,11 @@ const env = {
 describe('app auth', () => {
   it('renders the iPhone shortcut setup page', async () => {
     const response = await app.request('https://example.com/setup/shortcut', { method: 'GET' }, env);
+    const text = await response.text();
 
     expect(response.status).toBe(200);
-    expect(await response.text()).toContain('Wrap your webhook in a share sheet.');
+    expect(text).toContain('Wrap your webhook in a share sheet.');
+    expect(text).toContain('Noto Sans HK');
   });
 
   it('rejects webhook calls without secret', async () => {
