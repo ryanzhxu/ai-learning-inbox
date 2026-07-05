@@ -5,6 +5,7 @@ import { buildDigestSourceText, type DigestSource } from '../domain/digest';
 import type { AnalysisOutput, DigestOutput, Env } from '../types';
 
 const ANALYSIS_PROMPT_VERSION = 'cf-v1';
+const DEFAULT_OPENAI_MODEL = 'gpt-5.4-nano';
 
 function getClient(env: Env): OpenAI {
   return new OpenAI({ apiKey: env.OPENAI_API_KEY });
@@ -95,7 +96,7 @@ export async function analyzePost(env: Env, input: {
   imageUrl?: string | null;
 }): Promise<{ modelName: string; promptVersion: string; result: AnalysisOutput; rawJson: string }> {
   const client = getClient(env);
-  const model = env.OPENAI_MODEL || 'gpt-4.1-mini';
+  const model = env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
   const response = await client.responses.create({
     model,
     input: [
@@ -127,7 +128,7 @@ export async function analyzePost(env: Env, input: {
 
 export async function buildDigest(env: Env, items: DigestSource[]): Promise<{ modelName: string; result: DigestOutput; rawJson: string }> {
   const client = getClient(env);
-  const model = env.OPENAI_MODEL || 'gpt-4.1-mini';
+  const model = env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
   const response = await client.responses.create({
     model,
     input: [

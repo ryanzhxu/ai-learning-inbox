@@ -305,9 +305,9 @@ export class D1Repository {
     };
   }
 
-  async listRecentAnalyses(options: { hoursWindow: number; fallbackLimit: number }): Promise<AnalysisView[]> {
+  async listRecentAnalyses(options: { hoursWindow: number }): Promise<AnalysisView[]> {
     const since = new Date(Date.now() - options.hoursWindow * 60 * 60 * 1000).toISOString();
-    let rows = await this.env.DB.prepare(
+    const rows = await this.env.DB.prepare(
       `SELECT id, summary, why_it_matters, model_name, prompt_version, analyzed_at
        FROM analyses WHERE analyzed_at >= ? ORDER BY analyzed_at DESC`
     )
@@ -320,15 +320,6 @@ export class D1Repository {
         prompt_version: string;
         analyzed_at: string;
       }>();
-
-    if (rows.results.length === 0) {
-      rows = await this.env.DB.prepare(
-        `SELECT id, summary, why_it_matters, model_name, prompt_version, analyzed_at
-         FROM analyses ORDER BY analyzed_at DESC LIMIT ?`
-      )
-        .bind(options.fallbackLimit)
-        .all();
-    }
 
     const analyses: AnalysisView[] = [];
     for (const row of rows.results) {

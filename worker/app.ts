@@ -240,7 +240,7 @@ export async function processSubmissionJob(
 
 export async function createDigestJob(env: Env): Promise<number | null> {
   const repo = new D1Repository(env);
-  const analyses = await repo.listRecentAnalyses({ hoursWindow: 24, fallbackLimit: 12 });
+  const analyses = await repo.listRecentAnalyses({ hoursWindow: 24 });
   if (analyses.length === 0) {
     return null;
   }
