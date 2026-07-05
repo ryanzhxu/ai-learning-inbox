@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="hero">
+    <h1>AI learning inbox,<br />with action instead of hoarding.</h1>
+    <p>Capture posts now, process them into concrete experiments later. Current analysis mode: <strong>{{ analysis_provider }}</strong>.</p>
+  </section>
+
+  <section class="grid">
+    <div class="stack">
+      <div class="panel">
+        <div class="metrics">
+          <div class="metric">
+            <span class="label">Raw saves</span>
+            <strong>{{ raw_count }}</strong>
+          </div>
+          <div class="metric">
+            <span class="label">Processed today</span>
+            <strong>{{ processed_today }}</strong>
+          </div>
+          <div class="metric">
+            <span class="label">Pending</span>
+            <strong>{{ pending }}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Quick Capture</h2>
+        <p class="muted">Use this tonight if your Shortcut is not wired yet. Tomorrow you can replace this with Share Sheet input.</p>
+        <form method="post" action="/capture">
+          <select name="source_platform">
+            <option value="threads">Threads</option>
+            <option value="x">X</option>
+            <option value="rednote">Rednote</option>
+            <option value="instagram">Instagram</option>
+            <option value="web">Other</option>
+          </select>
+          <input type="url" name="source_url" placeholder="https://..." required />
+          <textarea name="shared_text" rows="5" placeholder="Paste the post text here if you have it."></textarea>
+          <textarea name="user_note" rows="3" placeholder="Optional: why did you save this?"></textarea>
+          <button type="submit">Save to Inbox</button>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h2>Process Inbox</h2>
+        <p class="muted">Run normalization and analysis for everything still pending.</p>
+        <form method="post" action="/admin/process">
+          <button class="secondary" type="submit">Process New Posts Now</button>
+        </form>
+      </div>
+
+      <div class="panel">
+        <h2>Build Digest</h2>
+        <p class="muted">Roll recent analyzed posts into one short summary and a tighter priority list.</p>
+        <form method="post" action="/admin/digest">
+          <button type="submit">Generate Latest Digest</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="stack">
+      <div class="panel">
+        <h2>Repeated Themes</h2>
+        <div class="theme-list">
+          {% if top_themes %}
+            {% for theme, count in top_themes %}
+              <div class="post-card">
+                <strong>{{ theme }}</strong>
+                <span class="muted">{{ count }} post(s)</span>
+              </div>
+            {% endfor %}
+          {% else %}
+            <p class="muted">No repeated themes yet. Process a few posts first.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Latest Digest</h2>
+        {% if latest_digest %}
+          <div class="post-card">
+            <strong>{{ latest_digest.coverage_count }} analyzed post(s)</strong>
+            <div>{{ latest_digest.summary }}</div>
+            <div class="muted"><a href="/digests/latest">Open full digest</a></div>
+          </div>
+        {% else %}
+          <p class="muted">No digest yet. Process a few posts, then generate one.</p>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" style="margin-top: 18px;">
+    <h2>Recent Processed Posts</h2>
+    <div class="post-list">
+      {% if recent %}
+        {% for post in recent %}
+          {% set analysis = post.analyses[-1] if post.analyses else None %}
+          <article class="post-card">
+            <div>
+              <strong><a href="/posts/{{ post.id }}">{{ post.title or post.canonical_url }}</a></strong>
+            </div>
+            <div class="muted">{{ post.platform }} · <a href="{{ post.canonical_url }}" target="_blank" rel="noreferrer">source</a></div>
+            <div>{{ analysis.summary if analysis else "Pending analysis" }}</div>
+            {% if analysis %}
+              <div class="chips">
+                {% for concept in analysis.concepts_json | from_json %}
+                  <span class="chip">{{ concept }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </article>
+        {% endfor %}
+      {% else %}
+        <p class="muted">No processed posts yet. Save one and click “Process New Posts Now”.</p>
+      {% endif %}
+    </div>
+  </section>
+{% endblock %}

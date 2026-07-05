@@ -1,0 +1,37 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "ai-learning-inbox",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-07-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ai-learning-inbox",
+      "database_id": "541728ef-d41c-4f60-a712-0488cfcc1101",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "ANALYSIS_QUEUE",
+        "queue": "ai-learning-inbox-analysis"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "ai-learning-inbox-analysis",
+        "max_batch_size": 5,
+        "max_batch_timeout": 5
+      }
+    ]
+  },
+  "triggers": {
+    "crons": ["0 9 * * *"]
+  },
+  "vars": {
+    "OPENAI_MODEL": "gpt-5.4-nano",
+    "APP_ENV": "development"
+  }
+}

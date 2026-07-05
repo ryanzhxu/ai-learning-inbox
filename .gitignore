@@ -1,0 +1,22 @@
+# Node / Cloudflare
+node_modules/
+.wrangler/
+coverage/
+
+# Local secrets
+.dev.vars
+.env
+
+# Python-generated files from earlier local prototype
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# Local data and OS files
+data/
+.DS_Store

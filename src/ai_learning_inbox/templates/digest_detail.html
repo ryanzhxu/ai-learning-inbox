@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="hero">
+    <h1>Latest learning digest.</h1>
+    <p>One roll-up view across your recent analyzed saves, so the next few experiments are easier to pick.</p>
+  </section>
+
+  {% if digest %}
+    <section class="grid">
+      <div class="stack">
+        <div class="panel">
+          <h2>Summary</h2>
+          <p>{{ digest.summary }}</p>
+          <p class="muted">{{ digest.coverage_count }} analyzed post(s) · {{ digest.model_name }}</p>
+        </div>
+        <div class="panel">
+          <h2>Priority actions</h2>
+          <div class="action-list">
+            {% for item in priorities %}
+              <article class="post-card">
+                <strong>{{ item.title }}</strong>
+                <div>{{ item.description }}</div>
+                <div class="muted">{{ item.difficulty }} · {{ item.estimated_minutes }} min</div>
+              </article>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="panel">
+          <h2>Themes</h2>
+          <div class="chips">
+            {% for theme in themes %}
+              <span class="chip">{{ theme }}</span>
+            {% else %}
+              <span class="muted">No themes detected</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </section>
+  {% else %}
+    <section class="panel">
+      <p class="muted">No digest yet. Process some posts first, then generate a digest from the dashboard.</p>
+    </section>
+  {% endif %}
+{% endblock %}

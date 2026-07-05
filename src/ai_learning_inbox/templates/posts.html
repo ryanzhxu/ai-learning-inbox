@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="hero">
+    <h1>All saved posts.</h1>
+    <p>Everything normalized into one inbox so you can review ideas instead of hunting across platforms.</p>
+  </section>
+  <section class="panel">
+    <div class="post-list">
+      {% for post in posts %}
+        {% set analysis = post.analyses[-1] if post.analyses else None %}
+        <article class="post-card">
+          <strong><a href="/posts/{{ post.id }}">{{ post.title or post.canonical_url }}</a></strong>
+          <div class="muted">{{ post.platform }} · <a href="{{ post.canonical_url }}" target="_blank" rel="noreferrer">source</a></div>
+          <div>{{ analysis.summary if analysis else "Pending analysis" }}</div>
+        </article>
+      {% else %}
+        <p class="muted">Nothing here yet.</p>
+      {% endfor %}
+    </div>
+  </section>
+{% endblock %}

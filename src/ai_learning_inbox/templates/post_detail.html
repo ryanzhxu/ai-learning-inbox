@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block content %}
+  <section class="hero">
+    <h1>{{ post.title or "Saved post" }}</h1>
+    <p>{{ post.platform }} · <a href="{{ post.canonical_url }}" target="_blank" rel="noreferrer">Open source link</a></p>
+  </section>
+  <section class="grid">
+    <div class="stack">
+      <div class="panel">
+        <h2>Original content</h2>
+        <p>{{ post.combined_text }}</p>
+      </div>
+      {% if analysis %}
+        <div class="panel">
+          <h2>Summary</h2>
+          <p>{{ analysis.summary }}</p>
+          <h3>Main claim</h3>
+          <p>{{ analysis.main_claim }}</p>
+          <h3>Why it matters</h3>
+          <p>{{ analysis.why_it_matters }}</p>
+        </div>
+      {% endif %}
+    </div>
+    <div class="stack">
+      {% if analysis %}
+        <div class="panel">
+          <h2>Concepts</h2>
+          <div class="chips">
+            {% for concept in concepts %}
+              <span class="chip">{{ concept }}</span>
+            {% endfor %}
+          </div>
+          <h2 style="margin-top: 18px;">Tools</h2>
+          <div class="chips">
+            {% for tool in tools %}
+              <span class="chip">{{ tool }}</span>
+            {% else %}
+              <span class="muted">No tools detected</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Action items</h2>
+          <div class="action-list">
+            {% for item in analysis.action_items %}
+              <article class="post-card">
+                <strong>{{ item.title }}</strong>
+                <div>{{ item.description }}</div>
+                <div class="muted">{{ item.difficulty }} · {{ item.estimated_minutes }} min</div>
+              </article>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="panel">
+          <h2>Follow-up questions</h2>
+          <div class="post-list">
+            {% for question in questions %}
+              <div class="post-card">{{ question }}</div>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </section>
+{% endblock %}

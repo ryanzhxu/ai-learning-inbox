@@ -1,0 +1,4 @@
+OPENAI_API_KEY=your_openai_api_key
+AILI_WEBHOOK_SECRET=replace_me_with_a_long_random_secret
+OPENAI_MODEL=gpt-4.1-mini
+APP_ENV=development
