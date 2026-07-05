@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 
 import { ingestPayloadSchema } from './domain/schemas';
 import { buildDigest as buildDigestWithOpenAI, analyzePost } from './providers/openai';
+import { fetchInstagramMetadata } from './providers/instagram';
 import { fetchThreadsMetadata, isUsefulThreadsText } from './providers/threads';
 import { D1Repository } from './repositories/d1';
 import type { Env } from './types';
@@ -16,24 +17,45 @@ function requireSecret(request: Request, env: Env): boolean {
   return request.headers.get('x-aili-secret') === env.AILI_WEBHOOK_SECRET;
 }
 
-function needsThreadsFetch(candidate: {
+function getSourceHost(candidate: {
+  source_platform: string;
+  source_url: string;
+  canonical_url?: string;
+}): string {
+  const source = candidate.canonical_url ?? candidate.source_url;
+  return new URL(source).hostname.toLowerCase();
+}
+
+function isThreadsCandidate(candidate: {
   source_platform: string;
   source_url: string;
   canonical_url?: string;
 }): boolean {
-  const source = candidate.canonical_url ?? candidate.source_url;
-  const isThreadsUrl = new URL(source).hostname.toLowerCase().includes('threads');
+  const host = getSourceHost(candidate);
+  const isThreadsUrl = host.includes('threads');
   const isThreadsPlatform = candidate.source_platform.trim().toLowerCase() === 'threads';
 
   return isThreadsUrl || isThreadsPlatform;
 }
 
-function buildThreadsNormalizedText(candidate: {
+function isInstagramCandidate(candidate: {
+  source_platform: string;
+  source_url: string;
+  canonical_url?: string;
+}): boolean {
+  const host = getSourceHost(candidate);
+  const isInstagramUrl = host.includes('instagram');
+  const isInstagramPlatform = candidate.source_platform.trim().toLowerCase() === 'instagram';
+
+  return isInstagramUrl || isInstagramPlatform;
+}
+
+function buildFetchedNormalizedText(candidate: {
   normalized_text: string;
   shared_text: string | null;
   user_note: string | null;
   source_url?: string;
-}, extractedText: string | null): string {
+}, extractedText: string | null, fallbackLines: string[]): string {
   const sourceUrl = candidate.source_url?.trim();
   const segments: string[] = [];
 
@@ -57,11 +79,36 @@ function buildThreadsNormalizedText(candidate: {
     return dedupedSegments.join('\n\n');
   }
 
-  return [
-    candidate.normalized_text,
+  return [candidate.normalized_text, ...fallbackLines].join('\n\n');
+}
+
+function buildThreadsNormalizedText(candidate: {
+  normalized_text: string;
+  shared_text: string | null;
+  user_note: string | null;
+  source_url?: string;
+}, extractedText: string | null): string {
+  return buildFetchedNormalizedText(candidate, extractedText, [
     'Threads content note: no public caption text could be extracted from the shared URL.',
     'Ask the user to paste the post text or upload screenshots if the post is image-heavy.',
-  ].join('\n\n');
+  ]);
+}
+
+function buildInstagramNormalizedText(candidate: {
+  normalized_text: string;
+  shared_text: string | null;
+  user_note: string | null;
+  source_url?: string;
+}, extractedText: string | null, imageUrl: string | null): string {
+  return buildFetchedNormalizedText(candidate, extractedText, imageUrl
+    ? [
+        'Instagram content note: the public image was sent to vision analysis.',
+        'If the capture is still unclear, ask the user to paste the caption or share a higher-resolution screenshot.',
+      ]
+    : [
+        'Instagram content note: no public caption text could be extracted from the shared URL.',
+        'Ask the user to paste the caption or upload screenshots if the post is image-heavy.',
+      ]);
 }
 
 export async function processSubmissionJob(
@@ -78,8 +125,9 @@ export async function processSubmissionJob(
   const promptVersion = 'cf-v1';
   try {
     let normalizedText = candidate.normalized_text;
+    let imageUrl: string | null = null;
 
-    if (needsThreadsFetch(candidate)) {
+    if (isThreadsCandidate(candidate)) {
       try {
         const fetched = await fetchThreadsMetadata(candidate.canonical_url);
         normalizedText = buildThreadsNormalizedText(candidate, fetched.text);
@@ -94,6 +142,22 @@ export async function processSubmissionJob(
           normalizedText,
         });
       }
+    } else if (isInstagramCandidate(candidate)) {
+      try {
+        const fetched = await fetchInstagramMetadata(candidate.canonical_url);
+        imageUrl = fetched.imageUrl;
+        normalizedText = buildInstagramNormalizedText(candidate, fetched.text, imageUrl);
+        await repo.updatePostContent(candidate.post_id, {
+          title: fetched.title ?? candidate.title,
+          normalizedText,
+        });
+      } catch {
+        normalizedText = buildInstagramNormalizedText(candidate, null, null);
+        await repo.updatePostContent(candidate.post_id, {
+          title: candidate.title,
+          normalizedText,
+        });
+      }
     }
 
     if (!options?.force && await repo.hasExistingAnalysis(candidate.post_id, promptVersion)) {
@@ -101,10 +165,20 @@ export async function processSubmissionJob(
       return;
     }
 
-    const analysis = await analyzePost(env, {
+    const analysisInput = {
       platform: candidate.source_platform,
       canonicalUrl: candidate.canonical_url,
       normalizedText,
+      imageUrl,
+    };
+    const analysis = await analyzePost(env, analysisInput).catch(async (error) => {
+      if (!imageUrl) {
+        throw error;
+      }
+      return analyzePost(env, {
+        ...analysisInput,
+        imageUrl: null,
+      });
     });
 
     await repo.saveAnalysis({

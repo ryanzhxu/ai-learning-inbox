@@ -61,10 +61,38 @@ export function normalizeAnalysisPayload(payload: unknown): unknown {
   return normalizeGeneratedPayload(payload, 3);
 }
 
+export function buildAnalysisInputContent(input: {
+  platform: string;
+  canonicalUrl: string;
+  normalizedText: string;
+  imageUrl?: string | null;
+}): Array<{ type: 'input_text'; text: string } | { type: 'input_image'; image_url: string; detail: 'low' | 'high' | 'auto' }> {
+  const imageInstruction = input.imageUrl?.trim()
+    ? '\n\nIf an image is attached, inspect it and combine any visible text or context with the saved text.'
+    : '';
+  const content: Array<{ type: 'input_text'; text: string } | { type: 'input_image'; image_url: string; detail: 'low' | 'high' | 'auto' }> = [
+    {
+      type: 'input_text',
+      text: `Platform: ${input.platform ?? 'unknown'}\nURL: ${input.canonicalUrl ?? ''}\n\nSaved text:\n${input.normalizedText}${imageInstruction}\n\nReturn JSON with this exact shape:\n{\n  "summary": string,\n  "why_it_matters": string,\n  "action_items": [\n    {\n      "title": string,\n      "description": string,\n      "difficulty": "easy" | "medium" | "hard",\n      "estimated_minutes": number\n    }\n  ]\n}\n\nRules:\n- Return 1 to 3 action_items only.\n- If you have more than 3 ideas, keep only the 3 most useful and concrete ones.\n- estimated_minutes must be an integer between 5 and 240.`,
+    },
+  ];
+
+  if (input.imageUrl?.trim()) {
+    content.push({
+      type: 'input_image',
+      image_url: input.imageUrl.trim(),
+      detail: 'high',
+    });
+  }
+
+  return content;
+}
+
 export async function analyzePost(env: Env, input: {
   platform: string;
   canonicalUrl: string;
   normalizedText: string;
+  imageUrl?: string | null;
 }): Promise<{ modelName: string; promptVersion: string; result: AnalysisOutput; rawJson: string }> {
   const client = getClient(env);
   const model = env.OPENAI_MODEL || 'gpt-4.1-mini';
@@ -82,12 +110,7 @@ export async function analyzePost(env: Env, input: {
       },
       {
         role: 'user',
-        content: [
-          {
-            type: 'input_text',
-            text: `Platform: ${input.platform}\nURL: ${input.canonicalUrl}\n\nSaved text:\n${input.normalizedText}\n\nReturn JSON with this exact shape:\n{\n  "summary": string,\n  "why_it_matters": string,\n  "action_items": [\n    {\n      "title": string,\n      "description": string,\n      "difficulty": "easy" | "medium" | "hard",\n      "estimated_minutes": number\n    }\n  ]\n}\n\nRules:\n- Return 1 to 3 action_items only.\n- If you have more than 3 ideas, keep only the 3 most useful and concrete ones.\n- estimated_minutes must be an integer between 5 and 240.`,
-          },
-        ],
+        content: buildAnalysisInputContent(input),
       },
     ],
   });
