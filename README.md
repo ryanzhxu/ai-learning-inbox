@@ -85,6 +85,12 @@ Cloudflare runtime:
 - `GET /digests/latest`
 - `GET /health`
 
+## CI
+
+- Pull requests run `npm run check` in GitHub Actions.
+- Pushes to `main` run `npm run check` and then `npx wrangler deploy`.
+- To require tests before merging a feature branch, set branch protection on `main` to require the `verify` workflow check.
+
 ## Sample webhook payload
 
 Send JSON to `POST /ingest/share` with header `x-aili-secret`:
