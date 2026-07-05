@@ -30,4 +30,26 @@ describe('threads metadata extraction', () => {
 
     expect(parsed.text).toBeNull();
   });
+
+  it('falls back to JSON-LD post text when og description is generic', () => {
+    const parsed = extractThreadsMetadata(`
+      <html>
+        <head>
+          <meta property="og:title" content="Mini Little Changes (@mini_littlechanges) on Threads" />
+          <meta property="og:description" content="See this post on Threads" />
+          <script type="application/ld+json">
+            {
+              "@context": "https://schema.org",
+              "@type": "SocialMediaPosting",
+              "headline": "Mini Little Changes",
+              "articleBody": "作者分享自己用 Claude Code 運作約半年，最初只停在前幾層。"
+            }
+          </script>
+        </head>
+      </html>
+    `);
+
+    expect(parsed.title).toBe('Mini Little Changes (@mini_littlechanges)');
+    expect(parsed.text).toContain('Claude Code');
+  });
 });

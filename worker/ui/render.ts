@@ -562,7 +562,7 @@ export function renderShortcutSetup(workerUrl: string): string {
       <div class="headline">
         <div>
           <h1>Wrap your webhook in a share sheet.</h1>
-          <p class="lede">Your backend is already ready. The only missing piece is a Shortcuts wrapper on your phone that forwards the shared URL, any visible text, and an optional note to your Worker.</p>
+          <p class="lede">Your backend is already ready. The shortcut can forward the shared Threads URL, any visible text, and an optional note to your Worker; the backend will try to extract public post text first and fall back gracefully if it cannot.</p>
         </div>
         ${renderNav()}
       </div>

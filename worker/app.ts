@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 
 import { ingestPayloadSchema } from './domain/schemas';
 import { buildDigest as buildDigestWithOpenAI, analyzePost } from './providers/openai';
-import { fetchThreadsMetadata } from './providers/threads';
+import { fetchThreadsMetadata, isUsefulThreadsText } from './providers/threads';
 import { D1Repository } from './repositories/d1';
 import type { Env } from './types';
 import { renderDashboard, renderDigest, renderPostDetail, renderPosts, renderShortcutSetup } from './ui/render';
@@ -18,7 +18,6 @@ function requireSecret(request: Request, env: Env): boolean {
 
 function needsThreadsFetch(candidate: {
   source_platform: string;
-  shared_text: string | null;
   source_url: string;
   canonical_url?: string;
 }): boolean {
@@ -26,16 +25,43 @@ function needsThreadsFetch(candidate: {
   const isThreadsUrl = new URL(source).hostname.toLowerCase().includes('threads');
   const isThreadsPlatform = candidate.source_platform.trim().toLowerCase() === 'threads';
 
-  if (!isThreadsUrl && !isThreadsPlatform) {
-    return false;
+  return isThreadsUrl || isThreadsPlatform;
+}
+
+function buildThreadsNormalizedText(candidate: {
+  normalized_text: string;
+  shared_text: string | null;
+  user_note: string | null;
+  source_url?: string;
+}, extractedText: string | null): string {
+  const sourceUrl = candidate.source_url?.trim();
+  const segments: string[] = [];
+
+  const resolvedText = extractedText?.trim();
+  if (resolvedText) {
+    segments.push(resolvedText);
   }
 
   const sharedText = candidate.shared_text?.trim();
-  if (!sharedText) {
-    return true;
+  if (sharedText && sharedText !== sourceUrl && isUsefulThreadsText(sharedText)) {
+    segments.push(sharedText);
   }
 
-  return sharedText === candidate.source_url.trim();
+  const userNote = candidate.user_note?.trim();
+  if (userNote) {
+    segments.push(userNote);
+  }
+
+  const dedupedSegments = Array.from(new Set(segments));
+  if (dedupedSegments.length > 0) {
+    return dedupedSegments.join('\n\n');
+  }
+
+  return [
+    candidate.normalized_text,
+    'Threads content note: no public caption text could be extracted from the shared URL.',
+    'Ask the user to paste the post text or upload screenshots if the post is image-heavy.',
+  ].join('\n\n');
 }
 
 export async function processSubmissionJob(
@@ -54,17 +80,20 @@ export async function processSubmissionJob(
     let normalizedText = candidate.normalized_text;
 
     if (needsThreadsFetch(candidate)) {
-      const fetched = await fetchThreadsMetadata(candidate.canonical_url);
-      if (!fetched.text) {
-        throw new Error('Could not extract Threads post text from the public page');
+      try {
+        const fetched = await fetchThreadsMetadata(candidate.canonical_url);
+        normalizedText = buildThreadsNormalizedText(candidate, fetched.text);
+        await repo.updatePostContent(candidate.post_id, {
+          title: fetched.title ?? candidate.title,
+          normalizedText,
+        });
+      } catch {
+        normalizedText = buildThreadsNormalizedText(candidate, null);
+        await repo.updatePostContent(candidate.post_id, {
+          title: candidate.title,
+          normalizedText,
+        });
       }
-
-      const combinedText = [fetched.text, candidate.user_note?.trim()].filter(Boolean).join('\n\n');
-      normalizedText = combinedText;
-      await repo.updatePostContent(candidate.post_id, {
-        title: fetched.title,
-        normalizedText: combinedText,
-      });
     }
 
     if (!options?.force && await repo.hasExistingAnalysis(candidate.post_id, promptVersion)) {
