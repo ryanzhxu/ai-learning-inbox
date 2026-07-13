@@ -29,6 +29,8 @@ export interface ActionItemInput {
 
 export const ACTION_STATUSES = ['open', 'planned', 'acted_on', 'dismissed'] as const;
 export type ActionStatus = typeof ACTION_STATUSES[number];
+export const ACTION_USEFULNESS = ['useful', 'not_useful'] as const;
+export type ActionUsefulness = typeof ACTION_USEFULNESS[number];
 
 export interface AnalysisOutput {
   summary: string;
@@ -69,6 +71,7 @@ export interface AggregateMetrics {
   evidenceKind: Record<string, number>;
   assetStatus: Record<string, number>;
   actionStatus: Record<string, number>;
+  actionUsefulness: Record<string, number>;
 }
 
 export interface DigestOutput {
@@ -118,7 +121,24 @@ export interface ActionItemView {
   estimated_minutes: number;
   status: ActionStatus;
   status_updated_at: string | null;
+  usefulness?: ActionUsefulness | null;
+  usefulness_updated_at?: string | null;
   position: number;
+}
+
+export interface ActionReviewItem {
+  id: number;
+  post_id: number;
+  platform: string;
+  title: string;
+  description: string;
+  difficulty: ActionItemInput['difficulty'];
+  estimated_minutes: number;
+  status: ActionStatus;
+  status_updated_at: string | null;
+  usefulness: ActionUsefulness | null;
+  usefulness_updated_at: string | null;
+  created_at: string;
 }
 
 export interface DigestView {

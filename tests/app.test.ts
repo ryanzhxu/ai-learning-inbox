@@ -56,6 +56,9 @@ const metricsEnv = {
       if (sql.includes('SELECT action_items.status')) {
         return { bind() { return { all: async () => ({ results: [{ status: 'open', count: 6 }, { status: 'acted_on', count: 4 }] }) }; } };
       }
+      if (sql.includes('SELECT action_items.usefulness')) {
+        return { bind() { return { all: async () => ({ results: [{ usefulness: 'useful', count: 3 }] }) }; } };
+      }
       throw new Error(`unexpected metrics query: ${sql}`);
     },
   } as unknown as D1Database,
@@ -156,6 +159,7 @@ describe('app auth', () => {
       evidence_kind: { text: 8, image: 2 },
       asset_status: { not_applicable: 8, downloaded: 2 },
       action_status: { open: 6, acted_on: 4 },
+      action_usefulness: { useful: 3 },
     });
   });
 
@@ -166,6 +170,62 @@ describe('app auth', () => {
     }, metricsEnv);
 
     expect(response.status).toBe(400);
+  });
+
+  it('protects the action review list and validates its filters', async () => {
+    const response = await app.request('/internal/action-items', { method: 'GET' }, baseEnv);
+    expect(response.status).toBe(401);
+
+    const invalid = await app.request('/internal/action-items?status=done', {
+      method: 'GET',
+      headers: { 'x-aili-secret': 'secret' },
+    }, baseEnv);
+    expect(invalid.status).toBe(400);
+  });
+
+  it('returns a safe action review list without source URLs', async () => {
+    const reviewEnv = {
+      ...baseEnv,
+      DB: {
+        prepare(sql: string) {
+          if (sql.includes('action_items.id') && sql.includes('latest_analyses')) {
+            return {
+              bind() {
+                return {
+                  all: async () => ({ results: [{
+                    id: 7,
+                    post_id: 3,
+                    platform: 'threads',
+                    title: 'Run the smallest experiment',
+                    description: 'Steps: 1) test one workflow. Done when the result is recorded.',
+                    difficulty: 'easy',
+                    estimated_minutes: 30,
+                    status: 'open',
+                    status_updated_at: null,
+                    usefulness: null,
+                    usefulness_updated_at: null,
+                    created_at: '2026-07-13T00:00:00.000Z',
+                  }] }),
+                };
+              },
+            };
+          }
+          throw new Error(`unexpected review query: ${sql}`);
+        },
+      } as unknown as D1Database,
+    };
+
+    const response = await app.request('/internal/action-items?status=open&days=30&limit=10', {
+      method: 'GET',
+      headers: { 'x-aili-secret': 'secret' },
+    }, reviewEnv);
+
+    expect(response.status).toBe(200);
+    const body = await response.json() as { actions: Array<Record<string, unknown>> };
+    expect(body.actions).toHaveLength(1);
+    expect(body.actions[0]).toMatchObject({ id: 7, post_id: 3, status: 'open' });
+    expect(body.actions[0]).not.toHaveProperty('source_url');
+    expect(body.actions[0]).not.toHaveProperty('normalized_text');
   });
 
   it('rejects action status updates without a secret', async () => {
@@ -215,6 +275,37 @@ describe('app auth', () => {
     }, actionStatusEnv(0));
 
     expect(response.status).toBe(404);
+  });
+
+  it('updates action usefulness through the protected feedback endpoint', async () => {
+    const response = await app.request('/internal/action-items/1/feedback', {
+      method: 'POST',
+      headers: {
+        'x-aili-secret': 'secret',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ usefulness: 'useful' }),
+    }, actionStatusEnv(1));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      status: 'updated',
+      action_item_id: 1,
+      usefulness: 'useful',
+    });
+  });
+
+  it('rejects invalid action usefulness values', async () => {
+    const response = await app.request('/internal/action-items/1/feedback', {
+      method: 'POST',
+      headers: {
+        'x-aili-secret': 'secret',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ usefulness: 'maybe' }),
+    }, actionStatusEnv(1));
+
+    expect(response.status).toBe(400);
   });
 
   it('updates a valid action status', async () => {

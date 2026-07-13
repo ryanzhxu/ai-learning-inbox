@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 
-import { actionStatusSchema, ingestPayloadSchema } from './domain/schemas';
+import { actionStatusSchema, actionUsefulnessSchema, ingestPayloadSchema } from './domain/schemas';
 import { ANALYSIS_PROMPT_VERSION, buildDigest as buildDigestWithOpenAI, analyzePost } from './providers/openai';
 import { fetchInstagramImageAsDataUrl, fetchInstagramMetadata } from './providers/instagram';
 import { fetchXMetadata } from './providers/x';
@@ -326,7 +326,37 @@ export function createApp() {
       evidence_kind: metrics.evidenceKind,
       asset_status: metrics.assetStatus,
       action_status: metrics.actionStatus,
+      action_usefulness: metrics.actionUsefulness,
     });
+  });
+
+  app.get('/internal/action-items', async (c) => {
+    if (!requireSecret(c.req.raw, c.env)) {
+      return unauthorized();
+    }
+
+    const requestedDays = c.req.query('days');
+    const days = requestedDays === undefined ? 30 : Number(requestedDays);
+    const requestedLimit = c.req.query('limit');
+    const limit = requestedLimit === undefined ? 25 : Number(requestedLimit);
+    const parsedStatus = actionStatusSchema.safeParse(c.req.query('status') ?? 'open');
+
+    if (!Number.isInteger(days) || days < 1 || days > 90) {
+      return c.json({ error: 'days must be an integer between 1 and 90' }, 400);
+    }
+    if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+      return c.json({ error: 'limit must be an integer between 1 and 50' }, 400);
+    }
+    if (!parsedStatus.success) {
+      return c.json({ error: 'Invalid action item status', allowed_statuses: actionStatusSchema.options }, 400);
+    }
+
+    const actions = await new D1Repository(c.env).listActionItemsForReview({
+      days,
+      status: parsedStatus.data,
+      limit,
+    });
+    return c.json({ period_days: days, status: parsedStatus.data, actions });
   });
 
   app.get('/', async (c) => {
@@ -404,6 +434,31 @@ export function createApp() {
     }
 
     return c.json({ status: 'updated', action_item_id: actionItemId, action_status: parsed.data });
+  });
+
+  app.post('/internal/action-items/:id/feedback', async (c) => {
+    if (!requireSecret(c.req.raw, c.env)) {
+      return unauthorized();
+    }
+
+    const actionItemId = Number(c.req.param('id'));
+    if (!Number.isInteger(actionItemId) || actionItemId < 1) {
+      return c.json({ error: 'Invalid action item id' }, 400);
+    }
+
+    const body = (await c.req.json().catch(() => ({}))) as { usefulness?: unknown };
+    const parsed = actionUsefulnessSchema.safeParse(body.usefulness);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid action item usefulness', allowed_values: actionUsefulnessSchema.options }, 400);
+    }
+
+    const repo = new D1Repository(c.env);
+    const updated = await repo.updateActionItemUsefulness(actionItemId, parsed.data);
+    if (!updated) {
+      return c.json({ error: 'Action item not found' }, 404);
+    }
+
+    return c.json({ status: 'updated', action_item_id: actionItemId, usefulness: parsed.data });
   });
 
   app.post('/internal/reprocess', async (c) => {

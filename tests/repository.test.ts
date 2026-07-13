@@ -192,6 +192,9 @@ describe('D1Repository', () => {
           if (sql.includes('SELECT action_items.status')) {
             return { bind() { return { all: async () => ({ results: [{ status: 'planned', count: 1 }] }) }; } };
           }
+          if (sql.includes('SELECT action_items.usefulness')) {
+            return { bind() { return { all: async () => ({ results: [{ usefulness: 'useful', count: 1 }] }) }; } };
+          }
           throw new Error(`unexpected query: ${sql}`);
         },
       } as unknown as D1Database,
@@ -208,6 +211,104 @@ describe('D1Repository', () => {
       evidenceKind: { image: 1 },
       assetStatus: { downloaded: 1 },
       actionStatus: { planned: 1 },
+      actionUsefulness: { useful: 1 },
     });
+  });
+
+  it('preserves matching feedback when reprocessing creates a new prompt version', async () => {
+    const insertedActionArgs: unknown[][] = [];
+    const env = {
+      DB: {
+        prepare(sql: string) {
+          if (sql.includes('prompt_version = ?')) {
+            return { bind() { return { first: async () => null }; } };
+          }
+          if (sql.includes('SELECT id FROM analyses WHERE post_id = ? ORDER BY')) {
+            return { bind() { return { first: async () => ({ id: 10 }) }; } };
+          }
+          if (sql.includes('SELECT title, description, status, status_updated_at')) {
+            return {
+              bind() {
+                return { all: async () => ({ results: [{
+                  title: 'Run the experiment',
+                  description: 'Try the smallest version.',
+                  status: 'acted_on',
+                  status_updated_at: '2026-07-12T18:00:00.000Z',
+                  usefulness: 'useful',
+                  usefulness_updated_at: '2026-07-12T18:30:00.000Z',
+                }] }) };
+              },
+            };
+          }
+          if (sql.includes('INSERT INTO analyses')) {
+            return { bind() { return { run: async () => ({ meta: { last_row_id: 12 } }) }; } };
+          }
+          if (sql.includes('INSERT INTO action_items')) {
+            return {
+              bind(...args: unknown[]) {
+                insertedActionArgs.push(args);
+                return { run: async () => ({ meta: {} }) };
+              },
+            };
+          }
+          throw new Error(`unexpected query: ${sql}`);
+        },
+      } as unknown as D1Database,
+    };
+
+    await new D1Repository(env as never).saveAnalysis({
+      postId: 3,
+      modelName: 'test-model',
+      promptVersion: 'cf-v4',
+      summary: 'Updated summary.',
+      whyItMatters: 'Updated context.',
+      analysisJson: '{}',
+      metrics: {
+        inputTokens: 100,
+        outputTokens: 50,
+        latencyMs: 300,
+        evidenceKind: 'text',
+        assetStatus: 'not_applicable',
+        detailLevel: 'none',
+        fallbackUsed: false,
+      },
+      actionItems: [{
+        title: 'Run the experiment',
+        description: 'Try the smallest version.',
+        difficulty: 'easy',
+        estimated_minutes: 20,
+      }],
+    });
+
+    expect(insertedActionArgs[0]?.[5]).toBe('acted_on');
+    expect(insertedActionArgs[0]?.[6]).toBe('2026-07-12T18:00:00.000Z');
+    expect(insertedActionArgs[0]?.[7]).toBe('useful');
+    expect(insertedActionArgs[0]?.[8]).toBe('2026-07-12T18:30:00.000Z');
+  });
+
+  it('updates action usefulness and records its timestamp', async () => {
+    let updateArgs: unknown[] = [];
+    const env = {
+      DB: {
+        prepare(sql: string) {
+          if (sql.includes('UPDATE action_items SET usefulness')) {
+            return {
+              bind(...args: unknown[]) {
+                updateArgs = args;
+                return { run: async () => ({ meta: { changes: 1 } }) };
+              },
+            };
+          }
+          throw new Error(`unexpected query: ${sql}`);
+        },
+      } as unknown as D1Database,
+    };
+
+    const updated = await new D1Repository(env as never).updateActionItemUsefulness(4, 'not_useful');
+
+    expect(updated).toBe(true);
+    expect(updateArgs[0]).toBe('not_useful');
+    expect(updateArgs[1]).toEqual(expect.any(String));
+    expect(updateArgs[2]).toBe(4);
   });
 });
