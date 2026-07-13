@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildAnalysisInputContent } from '../worker/providers/openai';
+import { ANALYSIS_PROMPT_VERSION, buildAnalysisInputContent } from '../worker/providers/openai';
 
 describe('analysis prompt', () => {
   it('asks for a prioritized, concrete, verifiable action loop', () => {
@@ -18,6 +18,11 @@ describe('analysis prompt', () => {
     expect(prompt).toContain('verification');
     expect(prompt).toContain('Avoid vague actions');
     expect(prompt).toContain('Return 1 to 3 action_items only');
+    expect(prompt).toContain('studying the actual saved post content');
+    expect(prompt).toContain('Prompt/command:');
+    expect(prompt).toContain('do not invent missing tools');
+    expect(prompt).toContain('obtain or verify that evidence');
+    expect(ANALYSIS_PROMPT_VERSION).toBe('cf-v3');
   });
 
   it('still supports image-backed analysis input', () => {
@@ -29,6 +34,6 @@ describe('analysis prompt', () => {
     });
 
     expect(content).toHaveLength(2);
-    expect(content[1]).toMatchObject({ type: 'input_image', detail: 'high' });
+    expect(content[1]).toMatchObject({ type: 'input_image', detail: 'low' });
   });
 });

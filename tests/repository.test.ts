@@ -66,6 +66,7 @@ describe('D1Repository', () => {
 
   it('preserves matching action status during reprocessing', async () => {
     const insertedArgs: unknown[][] = [];
+    let analysisUpdateArgs: unknown[] = [];
     const env = {
       DB: {
         prepare(sql: string) {
@@ -95,7 +96,12 @@ describe('D1Repository', () => {
           }
 
           if (sql.includes('UPDATE analyses SET')) {
-            return { bind() { return { run: async () => ({ meta: {} }) }; } };
+            return {
+              bind(...args: unknown[]) {
+                analysisUpdateArgs = args;
+                return { run: async () => ({ meta: {} }) };
+              },
+            };
           }
 
           if (sql.includes('DELETE FROM action_items')) {
@@ -120,10 +126,19 @@ describe('D1Repository', () => {
     await repo.saveAnalysis({
       postId: 3,
       modelName: 'test-model',
-      promptVersion: 'cf-v1',
+      promptVersion: 'cf-v3',
       summary: 'A refreshed summary.',
       whyItMatters: 'It remains relevant.',
       analysisJson: '{}',
+      metrics: {
+        inputTokens: 120,
+        outputTokens: 80,
+        latencyMs: 450,
+        evidenceKind: 'text',
+        assetStatus: 'not_applicable',
+        detailLevel: 'none',
+        fallbackUsed: false,
+      },
       actionItems: [
         {
           title: 'Build one experiment',
@@ -144,5 +159,10 @@ describe('D1Repository', () => {
     expect(insertedArgs[0]?.[6]).toBe('2026-07-12T18:00:00.000Z');
     expect(insertedArgs[1]?.[5]).toBe('open');
     expect(insertedArgs[1]?.[6]).toBeNull();
+    expect(analysisUpdateArgs[4]).toBe(120);
+    expect(analysisUpdateArgs[5]).toBe(80);
+    expect(analysisUpdateArgs[6]).toBe(450);
+    expect(analysisUpdateArgs[7]).toBe('text');
+    expect(analysisUpdateArgs[10]).toBe(0);
   });
 });

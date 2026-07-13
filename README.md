@@ -26,13 +26,15 @@ Nightly:
 
 ## What this version intentionally stores
 
-Each analyzed post only keeps:
+The public AI output for each analyzed post only keeps:
 
 - `summary`
 - `why_it_matters`
 - `action_items`
 
 This keeps token usage tighter than the earlier Python prototype.
+
+Private processing metrics also record token usage, latency, evidence type, asset reliability, image detail level, and whether an image fallback was used. These metrics support cost control and paid-product validation without expanding the user-facing analysis schema.
 
 ## Local setup
 
