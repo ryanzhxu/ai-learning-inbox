@@ -43,7 +43,19 @@ Then show the results in a small private dashboard and nightly digest.
 - `npx wrangler dev`
 - `npx wrangler deploy`
 
-## Next Likely Tasks
+## Current Product Milestone
 
+Action Loop v1 is the next productization step:
+
+- Action items use `open`, `planned`, `acted_on`, and `dismissed` statuses.
+- Reprocessing preserves statuses for unchanged actions and resets changed actions to `open`.
+- The analysis prompt prioritizes a concrete, verifiable first experiment instead of broad project suggestions.
+- The dashboard displays action status but remains read-only while dashboard authentication is paused.
+
+The next product question is whether action follow-through is strong enough to justify customer authentication and a broader multi-user product. Do not add billing, automatic publishing, or multi-user ownership until usage evidence supports that direction.
+
+## Deferred Product Work
+
+- Add dashboard authentication before enabling browser status controls.
 - Add better support for Threads replies when official API access is available.
-- Improve the dashboard UI when the capture pipeline is stable.
+- Use aggregate action-status and follow-through data to design the weekly learning review.

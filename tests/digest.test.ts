@@ -39,7 +39,7 @@ describe('digest helpers', () => {
         prompt_version: 'cf-v1',
         analyzed_at: '2026-07-04T00:00:00.000Z',
         action_items: [
-          { id: 1, title: 'Make a toy queue', description: 'Process one post async.', difficulty: 'easy', estimated_minutes: 30, status: 'open', position: 0 },
+          { id: 1, title: 'Make a toy queue', description: 'Process one post async.', difficulty: 'easy', estimated_minutes: 30, status: 'open', status_updated_at: null, position: 0 },
         ],
       },
     ]);

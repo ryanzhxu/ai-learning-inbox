@@ -35,4 +35,114 @@ describe('D1Repository', () => {
     expect(analyses).toEqual([]);
     expect(oldQueryCalled).toBe(false);
   });
+
+  it('updates an action item status and records the update timestamp', async () => {
+    let updateArgs: unknown[] = [];
+    const env = {
+      DB: {
+        prepare(sql: string) {
+          if (sql.includes('UPDATE action_items SET status')) {
+            return {
+              bind(...args: unknown[]) {
+                updateArgs = args;
+                return { run: async () => ({ meta: { changes: 1 } }) };
+              },
+            };
+          }
+
+          throw new Error(`unexpected query: ${sql}`);
+        },
+      } as unknown as D1Database,
+    };
+
+    const repo = new D1Repository(env as never);
+    const updated = await repo.updateActionItemStatus(7, 'planned');
+
+    expect(updated).toBe(true);
+    expect(updateArgs[0]).toBe('planned');
+    expect(updateArgs[1]).toEqual(expect.any(String));
+    expect(updateArgs[2]).toBe(7);
+  });
+
+  it('preserves matching action status during reprocessing', async () => {
+    const insertedArgs: unknown[][] = [];
+    const env = {
+      DB: {
+        prepare(sql: string) {
+          if (sql.includes('SELECT id FROM analyses')) {
+            return {
+              bind() {
+                return { first: async () => ({ id: 11 }) };
+              },
+            };
+          }
+
+          if (sql.includes('SELECT title, description, status, status_updated_at')) {
+            return {
+              bind() {
+                return {
+                  all: async () => ({
+                    results: [{
+                      title: 'Build one experiment',
+                      description: 'Try the smallest useful version.',
+                      status: 'planned',
+                      status_updated_at: '2026-07-12T18:00:00.000Z',
+                    }],
+                  }),
+                };
+              },
+            };
+          }
+
+          if (sql.includes('UPDATE analyses SET')) {
+            return { bind() { return { run: async () => ({ meta: {} }) }; } };
+          }
+
+          if (sql.includes('DELETE FROM action_items')) {
+            return { bind() { return { run: async () => ({ meta: {} }) }; } };
+          }
+
+          if (sql.includes('INSERT INTO action_items')) {
+            return {
+              bind(...args: unknown[]) {
+                insertedArgs.push(args);
+                return { run: async () => ({ meta: {} }) };
+              },
+            };
+          }
+
+          throw new Error(`unexpected query: ${sql}`);
+        },
+      } as unknown as D1Database,
+    };
+
+    const repo = new D1Repository(env as never);
+    await repo.saveAnalysis({
+      postId: 3,
+      modelName: 'test-model',
+      promptVersion: 'cf-v1',
+      summary: 'A refreshed summary.',
+      whyItMatters: 'It remains relevant.',
+      analysisJson: '{}',
+      actionItems: [
+        {
+          title: 'Build one experiment',
+          description: 'Try the smallest useful version.',
+          difficulty: 'easy',
+          estimated_minutes: 20,
+        },
+        {
+          title: 'Review one result',
+          description: 'Check what changed after the experiment.',
+          difficulty: 'easy',
+          estimated_minutes: 15,
+        },
+      ],
+    });
+
+    expect(insertedArgs[0]?.[5]).toBe('planned');
+    expect(insertedArgs[0]?.[6]).toBe('2026-07-12T18:00:00.000Z');
+    expect(insertedArgs[1]?.[5]).toBe('open');
+    expect(insertedArgs[1]?.[6]).toBeNull();
+  });
 });

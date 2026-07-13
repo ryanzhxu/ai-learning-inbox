@@ -1,4 +1,4 @@
-import type { ActionItemInput, DashboardStats, DigestView, PostListItem } from '../types';
+import type { ActionItemInput, ActionItemView, ActionStatus, DashboardStats, DigestView, PostListItem } from '../types';
 
 function escapeHtml(value: string): string {
   return value
@@ -9,14 +9,30 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;');
 }
 
-function renderActionItems(items: ActionItemInput[] | undefined): string {
+const ACTION_STATUS_LABELS: Record<ActionStatus, string> = {
+  open: 'Open',
+  planned: 'Planned',
+  acted_on: 'Acted on',
+  dismissed: 'Dismissed',
+};
+
+function renderActionStatus(status: ActionStatus | undefined): string {
+  if (!status) return '';
+  return `<span class="action-status action-status-${status}">${ACTION_STATUS_LABELS[status]}</span>`;
+}
+
+function renderActionItems(items: Array<ActionItemInput | ActionItemView> | undefined): string {
   if (!items || items.length === 0) {
     return '<p class="muted">No action items yet.</p>';
   }
 
   return `<ol class="actions">${items
     .map(
-      (item) => `<li><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.description)}</span><em>${escapeHtml(item.difficulty)} · ${item.estimated_minutes} min</em></li>`,
+      (item, index) => `<li class="action-item${index === 0 ? ' action-item-primary' : ''}">
+        <div class="action-heading"><strong>${escapeHtml(item.title)}</strong>${renderActionStatus('status' in item ? item.status : undefined)}</div>
+        <span>${escapeHtml(item.description)}</span>
+        <em>${escapeHtml(item.difficulty)} · ${item.estimated_minutes} min</em>
+      </li>`,
     )
     .join('')}</ol>`;
 }
@@ -354,9 +370,46 @@ export function layout(title: string, body: string): string {
       .actions li {
         padding-left: 4px;
       }
+      .action-item-primary {
+        margin-left: -8px;
+        padding: 12px 14px 12px 12px;
+        border-left: 3px solid var(--accent);
+        border-radius: 0 14px 14px 0;
+        background: var(--accent-soft);
+      }
+      .action-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
       .actions strong {
-        display: block;
+        display: inline-block;
         margin-bottom: 4px;
+      }
+      .action-status {
+        display: inline-flex;
+        flex: 0 0 auto;
+        align-items: center;
+        min-height: 24px;
+        padding: 3px 8px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--muted);
+        background: rgba(255,255,255,0.58);
+        font-size: 0.76rem;
+        font-style: normal;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .action-status-acted_on {
+        color: #286047;
+        border-color: rgba(40, 96, 71, 0.24);
+        background: rgba(40, 96, 71, 0.08);
+      }
+      .action-status-dismissed {
+        color: var(--muted);
+        opacity: 0.78;
       }
       .actions em {
         display: inline-block;

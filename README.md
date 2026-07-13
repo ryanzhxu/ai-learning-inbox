@@ -77,6 +77,7 @@ Cloudflare runtime:
 ## Main routes
 
 - `POST /ingest/share`
+- `POST /internal/action-items/:id/status`
 - `POST /internal/reprocess`
 - `POST /internal/digest`
 - `GET /`

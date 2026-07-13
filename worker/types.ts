@@ -27,6 +27,9 @@ export interface ActionItemInput {
   estimated_minutes: number;
 }
 
+export const ACTION_STATUSES = ['open', 'planned', 'acted_on', 'dismissed'] as const;
+export type ActionStatus = typeof ACTION_STATUSES[number];
+
 export interface AnalysisOutput {
   summary: string;
   why_it_matters: string;
@@ -78,7 +81,8 @@ export interface ActionItemView {
   description: string;
   difficulty: ActionItemInput['difficulty'];
   estimated_minutes: number;
-  status: string;
+  status: ActionStatus;
+  status_updated_at: string | null;
   position: number;
 }
 

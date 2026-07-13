@@ -4,7 +4,7 @@ import { analysisOutputSchema, digestOutputSchema } from '../domain/schemas';
 import { buildDigestSourceText, type DigestSource } from '../domain/digest';
 import type { AnalysisOutput, DigestOutput, Env } from '../types';
 
-const ANALYSIS_PROMPT_VERSION = 'cf-v1';
+const ANALYSIS_PROMPT_VERSION = 'cf-v2';
 const DEFAULT_OPENAI_MODEL = 'gpt-5.4-nano';
 
 function getClient(env: Env): OpenAI {
@@ -71,10 +71,20 @@ export function buildAnalysisInputContent(input: {
   const imageInstruction = input.imageUrl?.trim()
     ? '\n\nIf an image is attached, read it closely, transcribe any visible text you can see, and combine it with the saved text.'
     : '';
+  const actionRules = [
+    '- Return 1 to 3 action_items only.',
+    '- Put the highest-value, most practical next step first.',
+    '- Make the first action a concrete experiment or task with a clear artifact or observable result.',
+    '- Prefer a first action that can be completed in roughly 30 to 60 minutes; use a shorter estimate when that is enough.',
+    '- Make later actions optional follow-ups, not a list of broad projects.',
+    '- If a claim is uncertain, hype-prone, or needs evidence, make verification a concrete action instead of repeating the claim as fact.',
+    '- Avoid vague actions such as "build a system", "create a plan", or "learn more" unless you specify the smallest next step and its completion criteria.',
+    '- estimated_minutes must be an integer between 5 and 240.',
+  ].join('\n');
   const content: Array<{ type: 'input_text'; text: string } | { type: 'input_image'; image_url: string; detail: 'low' | 'high' | 'auto' }> = [
     {
       type: 'input_text',
-      text: `Platform: ${input.platform ?? 'unknown'}\nURL: ${input.canonicalUrl ?? ''}\n\nSaved text:\n${input.normalizedText}${imageInstruction}\n\nReturn JSON with this exact shape:\n{\n  "summary": string,\n  "why_it_matters": string,\n  "action_items": [\n    {\n      "title": string,\n      "description": string,\n      "difficulty": "easy" | "medium" | "hard",\n      "estimated_minutes": number\n    }\n  ]\n}\n\nRules:\n- Return 1 to 3 action_items only.\n- If you have more than 3 ideas, keep only the 3 most useful and concrete ones.\n- estimated_minutes must be an integer between 5 and 240.`,
+      text: `Platform: ${input.platform ?? 'unknown'}\nURL: ${input.canonicalUrl ?? ''}\n\nSaved text:\n${input.normalizedText}${imageInstruction}\n\nReturn JSON with this exact shape:\n{\n  "summary": string,\n  "why_it_matters": string,\n  "action_items": [\n    {\n      "title": string,\n      "description": string,\n      "difficulty": "easy" | "medium" | "hard",\n      "estimated_minutes": number\n    }\n  ]\n}\n\nRules:\n${actionRules}`,
     },
   ];
 
@@ -105,7 +115,7 @@ export async function analyzePost(env: Env, input: {
         content: [
           {
             type: 'input_text',
-            text: 'You analyze saved AI learning posts. Return JSON only. Be concise, practical, and action-oriented. Only return summary, why_it_matters, and action_items. Avoid hype and avoid extra keys. Return 1 to 3 action_items only.',
+            text: 'You analyze saved AI learning posts. Return JSON only. Be concise, practical, and action-oriented. Only return summary, why_it_matters, and action_items. Avoid hype and avoid extra keys. Return 1 to 3 action_items only. The first action must be the highest-value concrete next step, with a bounded scope and a verifiable outcome. Later actions are optional follow-ups. If a claim is uncertain or hype-prone, prefer a verification action.',
           },
         ],
       },

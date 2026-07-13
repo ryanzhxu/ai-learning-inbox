@@ -1,6 +1,7 @@
 import type {
   ActionItemInput,
   ActionItemView,
+  ActionStatus,
   AnalysisView,
   DashboardStats,
   DigestView,
@@ -13,6 +14,10 @@ import { normalizeForInsert } from '../domain/normalize';
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function actionIdentity(title: string, description: string): string {
+  return `${title.trim().toLowerCase()}\n${description.trim().toLowerCase()}`;
 }
 
 function parseJson<T>(value: string | null | undefined, fallback: T): T {
@@ -149,8 +154,21 @@ export class D1Repository {
       .first<{ id: number }>();
 
     let analysisId: number;
+    const previousItems = new Map<string, Array<{ status: ActionStatus; status_updated_at: string | null }>>();
     if (existing) {
       analysisId = existing.id;
+      const previous = await this.env.DB.prepare(
+        `SELECT title, description, status, status_updated_at
+         FROM action_items WHERE analysis_id = ? ORDER BY position ASC`
+      )
+        .bind(analysisId)
+        .all<{ title: string; description: string; status: ActionStatus; status_updated_at: string | null }>();
+      for (const item of previous.results) {
+        const key = actionIdentity(item.title, item.description);
+        const matches = previousItems.get(key) ?? [];
+        matches.push({ status: item.status, status_updated_at: item.status_updated_at });
+        previousItems.set(key, matches);
+      }
       await this.env.DB.prepare(
         `UPDATE analyses SET model_name = ?, summary = ?, why_it_matters = ?, analysis_json = ?, analyzed_at = ? WHERE id = ?`
       )
@@ -168,12 +186,24 @@ export class D1Repository {
     }
 
     for (const [position, item] of params.actionItems.entries()) {
+      const matches = previousItems.get(actionIdentity(item.title, item.description));
+      const previous = matches?.shift();
       await this.env.DB.prepare(
         `INSERT INTO action_items (
-          analysis_id, title, description, difficulty, estimated_minutes, status, position, created_at
-        ) VALUES (?, ?, ?, ?, ?, 'open', ?, ?)`
+          analysis_id, title, description, difficulty, estimated_minutes, status, status_updated_at, position, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-        .bind(analysisId, item.title, item.description, item.difficulty, item.estimated_minutes, position, timestamp)
+        .bind(
+          analysisId,
+          item.title,
+          item.description,
+          item.difficulty,
+          item.estimated_minutes,
+          previous?.status ?? 'open',
+          previous?.status_updated_at ?? null,
+          position,
+          timestamp,
+        )
         .run();
     }
 
@@ -288,7 +318,7 @@ export class D1Repository {
     if (!analysis) return null;
 
     const items = await this.env.DB.prepare(
-      `SELECT id, title, description, difficulty, estimated_minutes, status, position
+      `SELECT id, title, description, difficulty, estimated_minutes, status, status_updated_at, position
        FROM action_items WHERE analysis_id = ? ORDER BY position ASC`
     )
       .bind(analysis.id)
@@ -324,7 +354,7 @@ export class D1Repository {
     const analyses: AnalysisView[] = [];
     for (const row of rows.results) {
       const items = await this.env.DB.prepare(
-        `SELECT id, title, description, difficulty, estimated_minutes, status, position
+        `SELECT id, title, description, difficulty, estimated_minutes, status, status_updated_at, position
          FROM action_items WHERE analysis_id = ? ORDER BY position ASC`
       )
         .bind(row.id)
@@ -341,6 +371,16 @@ export class D1Repository {
     }
 
     return analyses;
+  }
+
+  async updateActionItemStatus(actionItemId: number, status: ActionStatus): Promise<boolean> {
+    const result = await this.env.DB.prepare(
+      `UPDATE action_items SET status = ?, status_updated_at = ? WHERE id = ?`
+    )
+      .bind(status, nowIso(), actionItemId)
+      .run();
+
+    return Number(result.meta.changes ?? 0) > 0;
   }
 
   async saveDigest(params: { summary: string; modelName: string; actionItems: ActionItemInput[]; }): Promise<number> {

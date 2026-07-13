@@ -30,6 +30,21 @@ const digestEnv = {
   } as unknown as D1Database,
 };
 
+function actionStatusEnv(changes: number) {
+  return {
+    ...baseEnv,
+    DB: {
+      prepare() {
+        return {
+          bind() {
+            return { run: async () => ({ meta: { changes } }) };
+          },
+        };
+      },
+    } as unknown as D1Database,
+  };
+}
+
 describe('app auth', () => {
   it('renders the iPhone shortcut setup page', async () => {
     const response = await app.request('https://example.com/setup/shortcut', { method: 'GET' }, baseEnv);
@@ -84,6 +99,73 @@ describe('app auth', () => {
     await expect(response.json()).resolves.toMatchObject({
       status: 'skipped',
       digest_id: null,
+    });
+  });
+
+  it('rejects action status updates without a secret', async () => {
+    const response = await app.request('/internal/action-items/1/status', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status: 'planned' }),
+    }, actionStatusEnv(1));
+
+    expect(response.status).toBe(401);
+  });
+
+  it('rejects invalid action statuses', async () => {
+    const response = await app.request('/internal/action-items/1/status', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-aili-secret': 'secret',
+      },
+      body: JSON.stringify({ status: 'done' }),
+    }, actionStatusEnv(1));
+
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects invalid action item ids', async () => {
+    const response = await app.request('/internal/action-items/not-an-id/status', {
+      method: 'POST',
+      headers: {
+        'x-aili-secret': 'secret',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ status: 'planned' }),
+    }, actionStatusEnv(1));
+
+    expect(response.status).toBe(400);
+  });
+
+  it('returns not found for an unknown action item', async () => {
+    const response = await app.request('/internal/action-items/999/status', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-aili-secret': 'secret',
+      },
+      body: JSON.stringify({ status: 'acted_on' }),
+    }, actionStatusEnv(0));
+
+    expect(response.status).toBe(404);
+  });
+
+  it('updates a valid action status', async () => {
+    const response = await app.request('/internal/action-items/1/status', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-aili-secret': 'secret',
+      },
+      body: JSON.stringify({ status: 'planned' }),
+    }, actionStatusEnv(1));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      status: 'updated',
+      action_item_id: 1,
+      action_status: 'planned',
     });
   });
 });

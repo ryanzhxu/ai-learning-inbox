@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 
-import { ingestPayloadSchema } from './domain/schemas';
+import { actionStatusSchema, ingestPayloadSchema } from './domain/schemas';
 import { buildDigest as buildDigestWithOpenAI, analyzePost } from './providers/openai';
 import { fetchInstagramImageAsDataUrl, fetchInstagramMetadata } from './providers/instagram';
 import { fetchXMetadata } from './providers/x';
@@ -325,6 +325,31 @@ export function createApp() {
     await repo.createOrUpdatePost(submissionId, payload);
     await c.env.ANALYSIS_QUEUE.send({ submissionId });
     return c.json({ status: 'accepted', submission_id: submissionId }, 202);
+  });
+
+  app.post('/internal/action-items/:id/status', async (c) => {
+    if (!requireSecret(c.req.raw, c.env)) {
+      return unauthorized();
+    }
+
+    const actionItemId = Number(c.req.param('id'));
+    if (!Number.isInteger(actionItemId) || actionItemId < 1) {
+      return c.json({ error: 'Invalid action item id' }, 400);
+    }
+
+    const body = (await c.req.json().catch(() => ({}))) as { status?: unknown };
+    const parsed = actionStatusSchema.safeParse(body.status);
+    if (!parsed.success) {
+      return c.json({ error: 'Invalid action item status', allowed_statuses: actionStatusSchema.options }, 400);
+    }
+
+    const repo = new D1Repository(c.env);
+    const updated = await repo.updateActionItemStatus(actionItemId, parsed.data);
+    if (!updated) {
+      return c.json({ error: 'Action item not found' }, 404);
+    }
+
+    return c.json({ status: 'updated', action_item_id: actionItemId, action_status: parsed.data });
   });
 
   app.post('/internal/reprocess', async (c) => {
