@@ -80,6 +80,8 @@ Cloudflare runtime:
 
 - `POST /ingest/share`
 - `POST /internal/action-items/:id/status`
+- `GET /internal/action-items?status=open&days=30&limit=25` (secret-protected review list)
+- `POST /internal/action-items/:id/feedback` (secret-protected usefulness feedback)
 - `GET /internal/metrics?days=30` (secret-protected aggregate product metrics)
 - `POST /internal/reprocess`
 - `POST /internal/digest`

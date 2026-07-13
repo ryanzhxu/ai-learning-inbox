@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { ACTION_STATUSES } from '../types';
+import { ACTION_STATUSES, ACTION_USEFULNESS } from '../types';
 
 export const ingestPayloadSchema = z.object({
   source_platform: z.string().trim().min(1).max(50),
@@ -19,6 +19,7 @@ export const actionItemSchema = z.object({
 });
 
 export const actionStatusSchema = z.enum(ACTION_STATUSES);
+export const actionUsefulnessSchema = z.enum(ACTION_USEFULNESS);
 
 export const analysisOutputSchema = z.object({
   summary: z.string().trim().min(1).max(600),

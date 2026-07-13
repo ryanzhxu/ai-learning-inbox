@@ -53,6 +53,7 @@ Measurement and Evidence Reliability v1 is the current productization step:
 - Analysis telemetry records token usage, latency, evidence kind, asset status, detail level, and whether an image fallback was used.
 - Instagram images are only sent to vision after successful download and use low detail to control cost.
 - `GET /internal/metrics?days=30` exposes secret-protected aggregate analysis, evidence, asset, fallback, and action-status metrics without raw post data.
+- `GET /internal/action-items` provides a secret-protected review list, and `POST /internal/action-items/:id/feedback` records `useful` or `not_useful` feedback.
 - The dashboard displays action status but remains read-only while dashboard authentication is paused.
 
 The next product question is whether evidence quality, analysis cost, and action follow-through support a paid product. Do not add billing, automatic publishing, or multi-user ownership until usage evidence supports that direction.

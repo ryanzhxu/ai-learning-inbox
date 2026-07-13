@@ -2,6 +2,8 @@ import type {
   ActionItemInput,
   ActionItemView,
   ActionStatus,
+  ActionReviewItem,
+  ActionUsefulness,
   AggregateMetrics,
   AnalysisView,
   DashboardStats,
@@ -157,21 +159,47 @@ export class D1Repository {
       .first<{ id: number }>();
 
     let analysisId: number;
-    const previousItems = new Map<string, Array<{ status: ActionStatus; status_updated_at: string | null }>>();
-    if (existing) {
-      analysisId = existing.id;
+    const previousAnalysis = existing ?? await this.env.DB.prepare(
+      `SELECT id FROM analyses WHERE post_id = ? ORDER BY analyzed_at DESC LIMIT 1`
+    )
+      .bind(params.postId)
+      .first<{ id: number }>();
+    const previousItems = new Map<string, Array<{
+      status: ActionStatus;
+      status_updated_at: string | null;
+      usefulness: ActionUsefulness | null;
+      usefulness_updated_at: string | null;
+    }>>();
+    const previousAnalysisId = (existing ?? previousAnalysis)?.id;
+    if (previousAnalysisId) {
       const previous = await this.env.DB.prepare(
-        `SELECT title, description, status, status_updated_at
+        `SELECT title, description, status, status_updated_at, usefulness, usefulness_updated_at
          FROM action_items WHERE analysis_id = ? ORDER BY position ASC`
       )
-        .bind(analysisId)
-        .all<{ title: string; description: string; status: ActionStatus; status_updated_at: string | null }>();
+        .bind(previousAnalysisId)
+        .all<{
+          title: string;
+          description: string;
+          status: ActionStatus;
+          status_updated_at: string | null;
+          usefulness: ActionUsefulness | null;
+          usefulness_updated_at: string | null;
+        }>();
       for (const item of previous.results) {
         const key = actionIdentity(item.title, item.description);
         const matches = previousItems.get(key) ?? [];
-        matches.push({ status: item.status, status_updated_at: item.status_updated_at });
+        matches.push({
+          status: item.status,
+          status_updated_at: item.status_updated_at,
+          usefulness: item.usefulness,
+          usefulness_updated_at: item.usefulness_updated_at,
+        });
         previousItems.set(key, matches);
       }
+    }
+
+    if (existing) {
+      analysisId = existing.id;
       await this.env.DB.prepare(
         `UPDATE analyses SET model_name = ?, summary = ?, why_it_matters = ?, analysis_json = ?, input_tokens = ?, output_tokens = ?, latency_ms = ?, evidence_kind = ?, asset_status = ?, detail_level = ?, fallback_used = ?, analyzed_at = ? WHERE id = ?`
       )
@@ -224,8 +252,9 @@ export class D1Repository {
       const previous = matches?.shift();
       await this.env.DB.prepare(
         `INSERT INTO action_items (
-          analysis_id, title, description, difficulty, estimated_minutes, status, status_updated_at, position, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          analysis_id, title, description, difficulty, estimated_minutes,
+          status, status_updated_at, usefulness, usefulness_updated_at, position, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
         .bind(
           analysisId,
@@ -235,6 +264,8 @@ export class D1Repository {
           item.estimated_minutes,
           previous?.status ?? 'open',
           previous?.status_updated_at ?? null,
+          previous?.usefulness ?? null,
+          previous?.usefulness_updated_at ?? null,
           position,
           timestamp,
         )
@@ -343,6 +374,23 @@ export class D1Repository {
       .bind(since)
       .all<{ status: string; count: number }>();
 
+    const usefulnessRows = await this.env.DB.prepare(
+      `WITH latest_analyses AS (
+         SELECT post_id, MAX(id) AS analysis_id
+         FROM analyses
+         WHERE analyzed_at >= ?
+         GROUP BY post_id
+       )
+       SELECT action_items.usefulness, COUNT(*) AS count
+       FROM latest_analyses
+       INNER JOIN action_items ON action_items.analysis_id = latest_analyses.analysis_id
+       WHERE action_items.usefulness IS NOT NULL
+       GROUP BY action_items.usefulness
+       ORDER BY action_items.usefulness`
+    )
+      .bind(since)
+      .all<{ usefulness: string; count: number }>();
+
     const toCounts = (rows: Array<{ count: number; [key: string]: string | number }>, key: string): Record<string, number> =>
       Object.fromEntries(rows.map((row) => [String(row[key]), Number(row.count)]));
 
@@ -355,7 +403,48 @@ export class D1Repository {
       evidenceKind: toCounts(evidenceRows.results, 'evidence_kind'),
       assetStatus: toCounts(assetRows.results, 'asset_status'),
       actionStatus: toCounts(actionRows.results, 'status'),
+      actionUsefulness: toCounts(usefulnessRows.results, 'usefulness'),
     };
+  }
+
+  async listActionItemsForReview(params: {
+    days: number;
+    status: ActionStatus;
+    limit: number;
+  }): Promise<ActionReviewItem[]> {
+    const since = new Date(Date.now() - params.days * 24 * 60 * 60 * 1000).toISOString();
+    const rows = await this.env.DB.prepare(
+      `WITH latest_analyses AS (
+         SELECT post_id, MAX(id) AS analysis_id
+         FROM analyses
+         WHERE analyzed_at >= ?
+         GROUP BY post_id
+       )
+       SELECT
+         action_items.id,
+         posts.id AS post_id,
+         posts.platform,
+         action_items.title,
+         action_items.description,
+         action_items.difficulty,
+         action_items.estimated_minutes,
+         action_items.status,
+         action_items.status_updated_at,
+         action_items.usefulness,
+         action_items.usefulness_updated_at,
+         action_items.created_at
+       FROM latest_analyses
+       INNER JOIN analyses ON analyses.id = latest_analyses.analysis_id
+       INNER JOIN posts ON posts.id = analyses.post_id
+       INNER JOIN action_items ON action_items.analysis_id = analyses.id
+       WHERE action_items.status = ?
+       ORDER BY analyses.analyzed_at DESC, action_items.position ASC
+       LIMIT ?`
+    )
+      .bind(since, params.status, params.limit)
+      .all<ActionReviewItem>();
+
+    return rows.results;
   }
 
   async listRecentPosts(limit = 12): Promise<PostListItem[]> {
@@ -424,7 +513,7 @@ export class D1Repository {
     if (!analysis) return null;
 
     const items = await this.env.DB.prepare(
-      `SELECT id, title, description, difficulty, estimated_minutes, status, status_updated_at, position
+      `SELECT id, title, description, difficulty, estimated_minutes, status, status_updated_at, usefulness, usefulness_updated_at, position
        FROM action_items WHERE analysis_id = ? ORDER BY position ASC`
     )
       .bind(analysis.id)
@@ -460,7 +549,7 @@ export class D1Repository {
     const analyses: AnalysisView[] = [];
     for (const row of rows.results) {
       const items = await this.env.DB.prepare(
-        `SELECT id, title, description, difficulty, estimated_minutes, status, status_updated_at, position
+        `SELECT id, title, description, difficulty, estimated_minutes, status, status_updated_at, usefulness, usefulness_updated_at, position
          FROM action_items WHERE analysis_id = ? ORDER BY position ASC`
       )
         .bind(row.id)
@@ -484,6 +573,16 @@ export class D1Repository {
       `UPDATE action_items SET status = ?, status_updated_at = ? WHERE id = ?`
     )
       .bind(status, nowIso(), actionItemId)
+      .run();
+
+    return Number(result.meta.changes ?? 0) > 0;
+  }
+
+  async updateActionItemUsefulness(actionItemId: number, usefulness: ActionUsefulness): Promise<boolean> {
+    const result = await this.env.DB.prepare(
+      `UPDATE action_items SET usefulness = ?, usefulness_updated_at = ? WHERE id = ?`
+    )
+      .bind(usefulness, nowIso(), actionItemId)
       .run();
 
     return Number(result.meta.changes ?? 0) > 0;
