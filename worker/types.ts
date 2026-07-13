@@ -60,6 +60,17 @@ export interface AnalysisMetrics extends AnalysisUsage {
   fallbackUsed: boolean;
 }
 
+export interface AggregateMetrics {
+  analysisCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  averageLatencyMs: number;
+  fallbackCount: number;
+  evidenceKind: Record<string, number>;
+  assetStatus: Record<string, number>;
+  actionStatus: Record<string, number>;
+}
+
 export interface DigestOutput {
   summary: string;
   action_items: ActionItemInput[];

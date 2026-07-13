@@ -2,6 +2,7 @@ import type {
   ActionItemInput,
   ActionItemView,
   ActionStatus,
+  AggregateMetrics,
   AnalysisView,
   DashboardStats,
   DigestView,
@@ -282,6 +283,78 @@ export class D1Repository {
       processed: counts.processed ?? 0,
       failed: counts.failed ?? 0,
       total_posts: Number(totalPostsRow?.count ?? 0),
+    };
+  }
+
+  async getAggregateMetrics(days: number): Promise<AggregateMetrics> {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const analysis = await this.env.DB.prepare(
+      `SELECT
+         COUNT(*) AS analysis_count,
+         COALESCE(SUM(input_tokens), 0) AS input_tokens,
+         COALESCE(SUM(output_tokens), 0) AS output_tokens,
+         COALESCE(AVG(latency_ms), 0) AS average_latency_ms,
+         COALESCE(SUM(fallback_used), 0) AS fallback_count
+       FROM analyses
+       WHERE analyzed_at >= ?`
+    )
+      .bind(since)
+      .first<{
+        analysis_count: number;
+        input_tokens: number;
+        output_tokens: number;
+        average_latency_ms: number;
+        fallback_count: number;
+      }>();
+
+    const evidenceRows = await this.env.DB.prepare(
+      `SELECT evidence_kind, COUNT(*) AS count
+       FROM analyses
+       WHERE analyzed_at >= ?
+       GROUP BY evidence_kind
+       ORDER BY evidence_kind`
+    )
+      .bind(since)
+      .all<{ evidence_kind: string; count: number }>();
+
+    const assetRows = await this.env.DB.prepare(
+      `SELECT asset_status, COUNT(*) AS count
+       FROM analyses
+       WHERE analyzed_at >= ?
+       GROUP BY asset_status
+       ORDER BY asset_status`
+    )
+      .bind(since)
+      .all<{ asset_status: string; count: number }>();
+
+    const actionRows = await this.env.DB.prepare(
+      `WITH latest_analyses AS (
+         SELECT post_id, MAX(id) AS analysis_id
+         FROM analyses
+         WHERE analyzed_at >= ?
+         GROUP BY post_id
+       )
+       SELECT action_items.status, COUNT(*) AS count
+       FROM latest_analyses
+       INNER JOIN action_items ON action_items.analysis_id = latest_analyses.analysis_id
+       GROUP BY action_items.status
+       ORDER BY action_items.status`
+    )
+      .bind(since)
+      .all<{ status: string; count: number }>();
+
+    const toCounts = (rows: Array<{ count: number; [key: string]: string | number }>, key: string): Record<string, number> =>
+      Object.fromEntries(rows.map((row) => [String(row[key]), Number(row.count)]));
+
+    return {
+      analysisCount: Number(analysis?.analysis_count ?? 0),
+      inputTokens: Number(analysis?.input_tokens ?? 0),
+      outputTokens: Number(analysis?.output_tokens ?? 0),
+      averageLatencyMs: Math.round(Number(analysis?.average_latency_ms ?? 0)),
+      fallbackCount: Number(analysis?.fallback_count ?? 0),
+      evidenceKind: toCounts(evidenceRows.results, 'evidence_kind'),
+      assetStatus: toCounts(assetRows.results, 'asset_status'),
+      actionStatus: toCounts(actionRows.results, 'status'),
     };
   }
 

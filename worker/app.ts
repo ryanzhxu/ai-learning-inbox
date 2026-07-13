@@ -297,6 +297,38 @@ export function createApp() {
     return c.json({ status: 'ok', app_env: c.env.APP_ENV ?? 'development', ...stats });
   });
 
+  app.get('/internal/metrics', async (c) => {
+    if (!requireSecret(c.req.raw, c.env)) {
+      return unauthorized();
+    }
+
+    const requestedDays = c.req.query('days');
+    const days = requestedDays === undefined ? 30 : Number(requestedDays);
+    if (!Number.isInteger(days) || days < 1 || days > 90) {
+      return c.json({ error: 'days must be an integer between 1 and 90' }, 400);
+    }
+
+    const metrics = await new D1Repository(c.env).getAggregateMetrics(days);
+    const fallbackRate = metrics.analysisCount > 0
+      ? Number((metrics.fallbackCount / metrics.analysisCount).toFixed(4))
+      : 0;
+
+    return c.json({
+      period_days: days,
+      analyses: {
+        count: metrics.analysisCount,
+        input_tokens: metrics.inputTokens,
+        output_tokens: metrics.outputTokens,
+        average_latency_ms: metrics.averageLatencyMs,
+        fallback_count: metrics.fallbackCount,
+        fallback_rate: fallbackRate,
+      },
+      evidence_kind: metrics.evidenceKind,
+      asset_status: metrics.assetStatus,
+      action_status: metrics.actionStatus,
+    });
+  });
+
   app.get('/', async (c) => {
     const repo = new D1Repository(c.env);
     const [stats, posts, digest] = await Promise.all([
