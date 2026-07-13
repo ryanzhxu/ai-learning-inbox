@@ -165,4 +165,49 @@ describe('D1Repository', () => {
     expect(analysisUpdateArgs[7]).toBe('text');
     expect(analysisUpdateArgs[10]).toBe(0);
   });
+
+  it('returns aggregate analysis and action metrics without content fields', async () => {
+    const env = {
+      DB: {
+        prepare(sql: string) {
+          if (sql.includes('COUNT(*) AS analysis_count')) {
+            return {
+              bind() {
+                return { first: async () => ({
+                  analysis_count: 2,
+                  input_tokens: 100,
+                  output_tokens: 40,
+                  average_latency_ms: 100.6,
+                  fallback_count: 1,
+                }) };
+              },
+            };
+          }
+          if (sql.includes('SELECT evidence_kind')) {
+            return { bind() { return { all: async () => ({ results: [{ evidence_kind: 'image', count: 1 }] }) }; } };
+          }
+          if (sql.includes('SELECT asset_status')) {
+            return { bind() { return { all: async () => ({ results: [{ asset_status: 'downloaded', count: 1 }] }) }; } };
+          }
+          if (sql.includes('SELECT action_items.status')) {
+            return { bind() { return { all: async () => ({ results: [{ status: 'planned', count: 1 }] }) }; } };
+          }
+          throw new Error(`unexpected query: ${sql}`);
+        },
+      } as unknown as D1Database,
+    };
+
+    const metrics = await new D1Repository(env as never).getAggregateMetrics(30);
+
+    expect(metrics).toEqual({
+      analysisCount: 2,
+      inputTokens: 100,
+      outputTokens: 40,
+      averageLatencyMs: 101,
+      fallbackCount: 1,
+      evidenceKind: { image: 1 },
+      assetStatus: { downloaded: 1 },
+      actionStatus: { planned: 1 },
+    });
+  });
 });
