@@ -1,12 +1,12 @@
 import { Hono } from 'hono';
 
 import { actionStatusSchema, ingestPayloadSchema } from './domain/schemas';
-import { buildDigest as buildDigestWithOpenAI, analyzePost } from './providers/openai';
+import { ANALYSIS_PROMPT_VERSION, buildDigest as buildDigestWithOpenAI, analyzePost } from './providers/openai';
 import { fetchInstagramImageAsDataUrl, fetchInstagramMetadata } from './providers/instagram';
 import { fetchXMetadata } from './providers/x';
 import { fetchThreadsMetadata, isUsefulThreadsText } from './providers/threads';
 import { D1Repository } from './repositories/d1';
-import type { Env } from './types';
+import type { AssetStatus, Env, EvidenceKind, AnalysisDetailLevel } from './types';
 import { renderDashboard, renderDigest, renderPostDetail, renderPosts, renderShortcutSetup } from './ui/render';
 import { fallbackDigestFromAnalyses } from './domain/digest';
 
@@ -112,16 +112,13 @@ function buildInstagramNormalizedText(candidate: {
   shared_text: string | null;
   user_note: string | null;
   source_url?: string;
-}, extractedText: string | null, imageUrl: string | null): string {
-  return buildFetchedNormalizedText(candidate, extractedText, imageUrl
-    ? [
-        'Instagram content note: the public image was sent to vision analysis.',
-        'If the capture is still unclear, ask the user to paste the caption or share a higher-resolution screenshot.',
-      ]
-    : [
-        'Instagram content note: no public caption text could be extracted from the shared URL.',
-        'Ask the user to paste the caption or upload screenshots if the post is image-heavy.',
-      ]);
+}, extractedText: string | null, imageAvailable: boolean): string {
+  const baseText = buildFetchedNormalizedText(candidate, extractedText, []);
+  const contentNote = imageAvailable
+    ? 'Instagram content note: the public image was downloaded and sent to low-detail vision analysis. Read only visible evidence and do not infer unreadable text.'
+    : 'Instagram content note: image evidence was unavailable. Do not infer text from the URL or generic metadata; ask for the caption or a screenshot if the source cannot be understood.';
+
+  return [baseText, contentNote].filter(Boolean).join('\n\n');
 }
 
 function buildXNormalizedText(candidate: {
@@ -147,10 +144,13 @@ export async function processSubmissionJob(
     throw new Error(`Submission ${submissionId} not found`);
   }
 
-  const promptVersion = 'cf-v1';
+  const promptVersion = ANALYSIS_PROMPT_VERSION;
   try {
     let normalizedText = candidate.normalized_text;
     let imageUrl: string | null = null;
+    let evidenceKind: EvidenceKind = 'text';
+    let assetStatus: AssetStatus = 'not_applicable';
+    let detailLevel: AnalysisDetailLevel = 'none';
 
     if (isThreadsCandidate(candidate)) {
       try {
@@ -168,16 +168,26 @@ export async function processSubmissionJob(
         });
       }
     } else if (isInstagramCandidate(candidate)) {
+      assetStatus = 'not_found';
       try {
         const fetched = await fetchInstagramMetadata(candidate.canonical_url);
-        imageUrl = fetched.imageUrl ? await fetchInstagramImageAsDataUrl(fetched.imageUrl) : null;
-        normalizedText = buildInstagramNormalizedText(candidate, fetched.text, imageUrl);
+        if (fetched.imageUrl) {
+          const image = await fetchInstagramImageAsDataUrl(fetched.imageUrl);
+          imageUrl = image.dataUrl;
+          assetStatus = image.status;
+          if (imageUrl) {
+            evidenceKind = 'image';
+            detailLevel = 'low';
+          }
+        }
+        normalizedText = buildInstagramNormalizedText(candidate, fetched.text, Boolean(imageUrl));
         await repo.updatePostContent(candidate.post_id, {
           title: fetched.title ?? candidate.title,
           normalizedText,
         });
       } catch {
-        normalizedText = buildInstagramNormalizedText(candidate, null, null);
+        assetStatus = 'metadata_failed';
+        normalizedText = buildInstagramNormalizedText(candidate, null, false);
         await repo.updatePostContent(candidate.post_id, {
           title: candidate.title,
           normalizedText,
@@ -211,15 +221,20 @@ export async function processSubmissionJob(
       normalizedText,
       imageUrl,
     };
-    const analysis = await analyzePost(env, analysisInput).catch(async (error) => {
+    let fallbackUsed = false;
+    let analysis;
+    try {
+      analysis = await analyzePost(env, analysisInput);
+    } catch (error) {
       if (!imageUrl) {
         throw error;
       }
-      return analyzePost(env, {
+      fallbackUsed = true;
+      analysis = await analyzePost(env, {
         ...analysisInput,
         imageUrl: null,
       });
-    });
+    }
 
     await repo.saveAnalysis({
       postId: candidate.post_id,
@@ -229,6 +244,13 @@ export async function processSubmissionJob(
       whyItMatters: analysis.result.why_it_matters,
       analysisJson: analysis.rawJson,
       actionItems: analysis.result.action_items,
+      metrics: {
+        ...analysis.usage,
+        evidenceKind,
+        assetStatus,
+        detailLevel,
+        fallbackUsed,
+      },
     });
     await repo.markSubmissionProcessed(submissionId);
   } catch (error) {

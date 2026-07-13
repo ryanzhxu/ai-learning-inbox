@@ -7,6 +7,7 @@ import type {
   DigestView,
   Env,
   IngestPayload,
+  AnalysisMetrics,
   PostListItem,
   SubmissionCandidate,
 } from '../types';
@@ -145,6 +146,7 @@ export class D1Repository {
     whyItMatters: string;
     analysisJson: string;
     actionItems: ActionItemInput[];
+    metrics: AnalysisMetrics;
   }): Promise<number> {
     const timestamp = nowIso();
     const existing = await this.env.DB.prepare(
@@ -170,17 +172,48 @@ export class D1Repository {
         previousItems.set(key, matches);
       }
       await this.env.DB.prepare(
-        `UPDATE analyses SET model_name = ?, summary = ?, why_it_matters = ?, analysis_json = ?, analyzed_at = ? WHERE id = ?`
+        `UPDATE analyses SET model_name = ?, summary = ?, why_it_matters = ?, analysis_json = ?, input_tokens = ?, output_tokens = ?, latency_ms = ?, evidence_kind = ?, asset_status = ?, detail_level = ?, fallback_used = ?, analyzed_at = ? WHERE id = ?`
       )
-        .bind(params.modelName, params.summary, params.whyItMatters, params.analysisJson, timestamp, analysisId)
+        .bind(
+          params.modelName,
+          params.summary,
+          params.whyItMatters,
+          params.analysisJson,
+          params.metrics.inputTokens,
+          params.metrics.outputTokens,
+          params.metrics.latencyMs,
+          params.metrics.evidenceKind,
+          params.metrics.assetStatus,
+          params.metrics.detailLevel,
+          params.metrics.fallbackUsed ? 1 : 0,
+          timestamp,
+          analysisId,
+        )
         .run();
       await this.env.DB.prepare(`DELETE FROM action_items WHERE analysis_id = ?`).bind(analysisId).run();
     } else {
       const result = await this.env.DB.prepare(
-        `INSERT INTO analyses (post_id, model_name, prompt_version, summary, why_it_matters, analysis_json, analyzed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO analyses (
+          post_id, model_name, prompt_version, summary, why_it_matters, analysis_json,
+          input_tokens, output_tokens, latency_ms, evidence_kind, asset_status, detail_level, fallback_used, analyzed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-        .bind(params.postId, params.modelName, params.promptVersion, params.summary, params.whyItMatters, params.analysisJson, timestamp)
+        .bind(
+          params.postId,
+          params.modelName,
+          params.promptVersion,
+          params.summary,
+          params.whyItMatters,
+          params.analysisJson,
+          params.metrics.inputTokens,
+          params.metrics.outputTokens,
+          params.metrics.latencyMs,
+          params.metrics.evidenceKind,
+          params.metrics.assetStatus,
+          params.metrics.detailLevel,
+          params.metrics.fallbackUsed ? 1 : 0,
+          timestamp,
+        )
         .run();
       analysisId = await getLastRowId(result);
     }

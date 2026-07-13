@@ -2,9 +2,9 @@ import OpenAI from 'openai';
 
 import { analysisOutputSchema, digestOutputSchema } from '../domain/schemas';
 import { buildDigestSourceText, type DigestSource } from '../domain/digest';
-import type { AnalysisOutput, DigestOutput, Env } from '../types';
+import type { AnalysisOutput, AnalysisUsage, DigestOutput, Env } from '../types';
 
-const ANALYSIS_PROMPT_VERSION = 'cf-v2';
+export const ANALYSIS_PROMPT_VERSION = 'cf-v3';
 const DEFAULT_OPENAI_MODEL = 'gpt-5.4-nano';
 
 function getClient(env: Env): OpenAI {
@@ -79,6 +79,10 @@ export function buildAnalysisInputContent(input: {
     '- Make later actions optional follow-ups, not a list of broad projects.',
     '- If a claim is uncertain, hype-prone, or needs evidence, make verification a concrete action instead of repeating the claim as fact.',
     '- Avoid vague actions such as "build a system", "create a plan", or "learn more" unless you specify the smallest next step and its completion criteria.',
+    '- Spend most of your effort studying the actual saved post content. Name the tools, inputs, sequence, constraints, and claimed result when the source provides them.',
+    '- In each action description, use this compact structure when supported by the source: "Steps: 1) ... 2) ... Prompt/command: ... Done when: ...".',
+    '- Include a copy-pasteable prompt or command when the source provides one or the action genuinely requires one; do not invent missing tools, steps, metrics, or claims.',
+    '- If important evidence or instructions are missing, make the first action obtain or verify that evidence rather than guessing.',
     '- estimated_minutes must be an integer between 5 and 240.',
   ].join('\n');
   const content: Array<{ type: 'input_text'; text: string } | { type: 'input_image'; image_url: string; detail: 'low' | 'high' | 'auto' }> = [
@@ -92,7 +96,7 @@ export function buildAnalysisInputContent(input: {
     content.push({
       type: 'input_image',
       image_url: input.imageUrl.trim(),
-      detail: 'high',
+      detail: 'low',
     });
   }
 
@@ -104,9 +108,10 @@ export async function analyzePost(env: Env, input: {
   canonicalUrl: string;
   normalizedText: string;
   imageUrl?: string | null;
-}): Promise<{ modelName: string; promptVersion: string; result: AnalysisOutput; rawJson: string }> {
+}): Promise<{ modelName: string; promptVersion: string; result: AnalysisOutput; rawJson: string; usage: AnalysisUsage }> {
   const client = getClient(env);
   const model = env.OPENAI_MODEL || DEFAULT_OPENAI_MODEL;
+  const startedAt = Date.now();
   const response = await client.responses.create({
     model,
     input: [
@@ -115,7 +120,7 @@ export async function analyzePost(env: Env, input: {
         content: [
           {
             type: 'input_text',
-            text: 'You analyze saved AI learning posts. Return JSON only. Be concise, practical, and action-oriented. Only return summary, why_it_matters, and action_items. Avoid hype and avoid extra keys. Return 1 to 3 action_items only. The first action must be the highest-value concrete next step, with a bounded scope and a verifiable outcome. Later actions are optional follow-ups. If a claim is uncertain or hype-prone, prefer a verification action.',
+            text: 'You analyze saved AI learning posts. Return JSON only. First study the actual source content carefully, then explain the key workflow and turn it into exact, bounded learning steps. Be concise, practical, and action-oriented. Only return summary, why_it_matters, and action_items. Avoid hype and avoid extra keys. Return 1 to 3 action_items only. The first action must be the highest-value concrete next step, with a bounded scope and a verifiable outcome. Later actions are optional follow-ups. If a claim is uncertain or hype-prone, prefer a verification action. Never invent unreadable image text, missing source steps, tools, metrics, or claims.',
           },
         ],
       },
@@ -133,6 +138,11 @@ export async function analyzePost(env: Env, input: {
     promptVersion: ANALYSIS_PROMPT_VERSION,
     result: parsed,
     rawJson: JSON.stringify(parsed),
+    usage: {
+      inputTokens: response.usage?.input_tokens ?? null,
+      outputTokens: response.usage?.output_tokens ?? null,
+      latencyMs: Date.now() - startedAt,
+    },
   };
 }
 

@@ -213,29 +213,42 @@ export function extractInstagramMetadata(html: string): { title: string | null; 
   };
 }
 
-export async function fetchInstagramImageAsDataUrl(imageUrl: string): Promise<string> {
-  const response = await fetch(imageUrl, {
-    headers: {
-      'user-agent': 'Mozilla/5.0 (compatible; AI-Learning-Inbox/1.0; +https://ai-learning-inbox.rxlab.workers.dev)',
-    },
-    redirect: 'follow',
-  });
+export async function fetchInstagramImageAsDataUrl(imageUrl: string): Promise<{
+  dataUrl: string | null;
+  status: 'downloaded' | 'download_failed' | 'invalid_content' | 'too_large';
+}> {
+  try {
+    const response = await fetch(imageUrl, {
+      headers: {
+        'user-agent': 'Mozilla/5.0 (compatible; AI-Learning-Inbox/1.0; +https://ai-learning-inbox.rxlab.workers.dev)',
+      },
+      redirect: 'follow',
+    });
 
-  if (!response.ok) {
-    return imageUrl;
+    if (!response.ok) {
+      return { dataUrl: null, status: 'download_failed' };
+    }
+
+    const contentType = response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
+    if (!contentType?.startsWith('image/')) {
+      return { dataUrl: null, status: 'invalid_content' };
+    }
+
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength === 0) {
+      return { dataUrl: null, status: 'invalid_content' };
+    }
+    if (bytes.byteLength > MAX_IMAGE_BYTES) {
+      return { dataUrl: null, status: 'too_large' };
+    }
+
+    return {
+      dataUrl: `data:${contentType};base64,${Buffer.from(bytes).toString('base64')}`,
+      status: 'downloaded',
+    };
+  } catch {
+    return { dataUrl: null, status: 'download_failed' };
   }
-
-  const contentType = response.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase();
-  if (!contentType?.startsWith('image/')) {
-    return imageUrl;
-  }
-
-  const bytes = await response.arrayBuffer();
-  if (bytes.byteLength === 0 || bytes.byteLength > MAX_IMAGE_BYTES) {
-    return imageUrl;
-  }
-
-  return `data:${contentType};base64,${Buffer.from(bytes).toString('base64')}`;
 }
 
 export async function fetchInstagramMetadata(url: string): Promise<{ title: string | null; text: string | null; imageUrl: string | null }> {

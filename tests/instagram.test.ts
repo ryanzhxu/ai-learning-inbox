@@ -78,7 +78,7 @@ describe('analysis input content', () => {
     expect(content[1]).toMatchObject({
       type: 'input_image',
       image_url: 'https://cdn.example.com/post.jpg',
-      detail: 'high',
+      detail: 'low',
     });
   });
 });
@@ -98,10 +98,11 @@ describe('instagram image fetching', () => {
     const result = await fetchInstagramImageAsDataUrl('https://cdn.example.com/post.png');
 
     expect(fetchMock).toHaveBeenCalledWith('https://cdn.example.com/post.png', expect.any(Object));
-    expect(result.startsWith('data:image/png;base64,')).toBe(true);
+    expect(result.status).toBe('downloaded');
+    expect(result.dataUrl?.startsWith('data:image/png;base64,')).toBe(true);
   });
 
-  it('keeps the original url when the fetch is not an image', async () => {
+  it('does not send the original url when the fetch is not an image', async () => {
     const fetchMock = vi.fn(async () => new Response('<html></html>', {
       headers: { 'content-type': 'text/html' },
       status: 200,
@@ -110,6 +111,25 @@ describe('instagram image fetching', () => {
 
     const result = await fetchInstagramImageAsDataUrl('https://cdn.example.com/post.png');
 
-    expect(result).toBe('https://cdn.example.com/post.png');
+    expect(result).toEqual({ dataUrl: null, status: 'invalid_content' });
+  });
+
+  it('records a download failure when the image url is unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 403 })));
+
+    const result = await fetchInstagramImageAsDataUrl('https://cdn.example.com/post.png');
+
+    expect(result).toEqual({ dataUrl: null, status: 'download_failed' });
+  });
+
+  it('does not inline an image larger than the configured limit', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array(8 * 1024 * 1024 + 1), {
+      headers: { 'content-type': 'image/png' },
+      status: 200,
+    })));
+
+    const result = await fetchInstagramImageAsDataUrl('https://cdn.example.com/post.png');
+
+    expect(result).toEqual({ dataUrl: null, status: 'too_large' });
   });
 });

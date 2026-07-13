@@ -36,6 +36,30 @@ export interface AnalysisOutput {
   action_items: ActionItemInput[];
 }
 
+export type EvidenceKind = 'text' | 'image' | 'pdf' | 'audio' | 'document';
+export type AssetStatus =
+  | 'not_applicable'
+  | 'not_found'
+  | 'metadata_failed'
+  | 'downloaded'
+  | 'download_failed'
+  | 'invalid_content'
+  | 'too_large';
+export type AnalysisDetailLevel = 'none' | 'low';
+
+export interface AnalysisUsage {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  latencyMs: number;
+}
+
+export interface AnalysisMetrics extends AnalysisUsage {
+  evidenceKind: EvidenceKind;
+  assetStatus: AssetStatus;
+  detailLevel: AnalysisDetailLevel;
+  fallbackUsed: boolean;
+}
+
 export interface DigestOutput {
   summary: string;
   action_items: ActionItemInput[];
